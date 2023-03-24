@@ -1,5 +1,7 @@
 # Map Repository
 
+[![Continuous integration](https://github.com/rakbladsvalsen/repository/actions/workflows/ci.yml/badge.svg)](https://github.com/rakbladsvalsen/repository/actions/workflows/ci.yml)
+
 This app provides a nice and comfy place for all your hashtable-like JSON data.
 
 ## Get started
