@@ -33,12 +33,7 @@ impl InboundRecordData {
         let is_error = self.data.par_iter().find_map_any(|hmap| {
             // Validate ALL dicts have the keys present in the schema, otherwise
             // error out
-            if hmap
-                .keys()
-                .map(|v| v.to_owned())
-                .collect::<HashSet<_>>()
-                != valid_keys
-            {
+            if hmap.keys().map(|v| v.to_owned()).collect::<HashSet<_>>() != valid_keys {
                 return Some(APIError::ValidationFailure(
                     ValidationFailureKind::MissingDictKeys,
                 ));
