@@ -1,0 +1,39 @@
+[package]
+name = "central-repository-api"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+actix-example-core = { path = "../core" }
+actix-files = "0.6"
+actix-http = "3"
+actix-rt = "2.7"
+actix-service = "2"
+actix-web = "4.3.1"
+dotenvy = "0.15"
+serde = "1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+entity = { path = "../entity" }
+migration = { path = "../migration" }
+pretty_env_logger = "0.4.0"
+log = "0.4.17"
+sqlx = "0.6.2"
+validator = { version = "0.16.0", features = ["derive"] }
+serde_json = "1.0.93"
+rayon = "1.6.1"
+thiserror = "1.0.38"
+futures = "0.3.26"
+envconfig = "0.10.0"
+argon2 = "0.5.0"
+jsonwebtoken = "8.2.0"
+lazy_static = "1.4.0"
+ring = "0.16.20"
+base64 = "0.21.0"
+chrono = "0.4.23"
+cached = "0.42.0"
+tracing = { version = "0.1.37", features = ["log", "async-await"] }
+tracing-actix-web = "0.7.2"
+uuid = { version = "1.3.0", features = ["v4"] }
+mimalloc = { version = "*", default-features = false }
+async-trait = "0.1.66"

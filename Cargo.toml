@@ -1,0 +1,17 @@
+[package]
+name = "central-repository"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+members = [".", "api", "core", "entity", "migration"]
+
+[dependencies]
+central-repository-api = { path = "api" }
+futures = "0.3.26"
+
+[profile.release]
+opt-level = 3
+lto = true
+panic = "abort"
