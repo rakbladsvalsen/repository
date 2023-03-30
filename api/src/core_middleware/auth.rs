@@ -18,7 +18,7 @@ create_middleware!(
     AuthMiddleware,
     AuthMiddlewareInner,
     fn call(&self, req: ServiceRequest) -> Self::Future {
-        use actix_example_core::user::Model as UserModel;
+        use central_repository_dao::user::Model as UserModel;
         let svc = self.service.clone();
         let app_state = req.app_data::<web::Data<AppState>>().unwrap();
         // just clone the db reference, not the whole app state
@@ -58,9 +58,10 @@ create_middleware!(
                     .get::<EnteredSpan>()
                     .expect("Logging middleware must run before auth middleware!");
                 span.record("user", format!("{}/{}", user.id, user.username));
+                span.record("superuser", user.is_superuser);
             }
             info!(
-                "Received valid token for user id: {:?}, username: {:?}.",
+                "Authenticated token for user id: {:?}, username: {:?}.",
                 user.id, user.username
             );
             req.extensions_mut().insert(user);

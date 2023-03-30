@@ -1,5 +1,5 @@
-use actix_example_core::user::Model as UserModel;
 use async_trait::async_trait;
+use central_repository_dao::user::Model as UserModel;
 
 use crate::{auth::password::UserPassword, error::APIError};
 

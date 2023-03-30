@@ -62,45 +62,33 @@ struct PathSegmentAnalyze {
 
 impl PathSegmentAnalyze {
     pub fn new(ty: &syn::Type) -> syn::Result<Self> {
-        match ty {
-            syn::Type::Path(ty_path) => {
-                let last = ty_path.path.segments.last().ok_or(syn::Error::new(
-                    ty_path.span(),
-                    "Couldn't determine the type of this field",
-                ))?;
-                let err = syn::Error::new(last.span(), "Couldn't extract inner type");
-                match last.arguments {
-                    PathArguments::AngleBracketed(AngleBracketedGenericArguments {
-                        ref args,
-                        ..
-                    }) => {
-                        match args
-                            .last()
-                            .ok_or(syn::Error::new(last.span(), "Couldn't extract inner type"))?
-                        {
-                            syn::GenericArgument::Type(syn::Type::Path(syn::TypePath {
-                                path: ref p,
-                                ..
-                            })) => {
-                                let last = p.segments.last().ok_or(syn::Error::new(
-                                    last.span(),
-                                    "Couldn't extract inner type",
-                                ))?;
-                                Ok(PathSegmentAnalyze {
-                                    is_option: last.ident == "Option",
-                                    _inner_type: last.ident.to_string(),
-                                })
-                            }
-                            _ => Err(err),
-                        }
-                    }
-                    _ => Ok(PathSegmentAnalyze {
-                        is_option: last.ident == "Option",
-                        _inner_type: last.ident.to_string(),
-                    }),
+        if let syn::Type::Path(ty_path) = ty {
+            let last_segment = ty_path.path.segments.last().ok_or_else(|| {
+                syn::Error::new(ty_path.span(), "Couldn't determine the type of this field")
+            })?;
+            if let PathArguments::AngleBracketed(AngleBracketedGenericArguments { args, .. }) =
+                &last_segment.arguments
+            {
+                if let Some(syn::GenericArgument::Type(syn::Type::Path(syn::TypePath {
+                    path,
+                    ..
+                }))) = args.last()
+                {
+                    let last_segment = path.segments.last().ok_or_else(|| {
+                        syn::Error::new(last_segment.span(), "Couldn't extract inner type")
+                    })?;
+                    return Ok(PathSegmentAnalyze {
+                        is_option: last_segment.ident == "Option",
+                        _inner_type: last_segment.ident.to_string(),
+                    });
                 }
             }
-            _ => Err(syn::Error::new(ty.span(), "Couldn't extract type")),
+            Ok(PathSegmentAnalyze {
+                is_option: last_segment.ident == "Option",
+                _inner_type: last_segment.ident.to_string(),
+            })
+        } else {
+            Err(syn::Error::new(ty.span(), "Couldn't extract type"))
         }
     }
 }
@@ -189,11 +177,10 @@ fn expand(ast: DeriveInput) -> syn::Result<TokenStream2> {
             }
             let field_name_desc = format!("-{field_name_asc}");
             // build "match =>" arms.
-            let expr = quote! {
+            available_filtering_columns.push(quote! {
                 #field_name_asc => select.order_by_asc(#db_column),
                 #field_name_desc => select.order_by_desc(#db_column),
-            };
-            available_filtering_columns.push(expr);
+            });
         }
     }
 
@@ -204,20 +191,24 @@ fn expand(ast: DeriveInput) -> syn::Result<TokenStream2> {
                 "Missing default sort column",
             ))?)?;
         sort_expr = Some(quote! {
-            pub fn sort(&self, mut select: Select<Entity>) -> Select<Entity> {
-                if self.order_by.as_ref().is_none(){
-                    return select;
+            impl AsQueryParamSortable for #bident{
+                fn sort<E: sea_orm::EntityTrait>(&self, mut select: Select<E>) -> Select<E> {
+                    if self.order_by.as_ref().is_none(){
+                        return select;
+                    }
+                    select = match self.order_by.as_ref().unwrap().as_str(){
+                        #(#available_filtering_columns)*
+                        _ => select.order_by_asc(#default_sort_column)
+                    };
+                    select
                 }
-                select = match self.order_by.as_ref().unwrap().as_str(){
-                    #(#available_filtering_columns)*
-                    _ => select.order_by_asc(#default_sort_column)
-                };
-                select
             }
         })
     }
 
     let expanded = quote! {
+        use sea_orm::QueryOrder;
+
         #[derive(Debug, serde::Deserialize, serde::Serialize, Default)]
         #[serde(rename_all = "camelCase")]
         pub struct #bident {
@@ -225,10 +216,12 @@ fn expand(ast: DeriveInput) -> syn::Result<TokenStream2> {
             #(#optionized_fields,)*
         }
 
-        impl #bident {
-            #sort_expr
+        #sort_expr
 
-            pub fn filter(&self, mut select: Select<Entity>) -> Select<Entity> {
+
+        impl AsQueryParamFilterable for #bident {
+
+            fn filter<E: EntityTrait>(&self, mut select: Select<E>) -> Select<E> {
                 #(#filter_fn_matches)*
                 select
             }
@@ -244,6 +237,4 @@ pub fn derive(input: TokenStream) -> proc_macro::TokenStream {
     expand(ast)
         .unwrap_or_else(syn::Error::into_compile_error)
         .into()
-    // TokenStream::new()
-    // todo!()
 }

@@ -1,7 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use actix_example_core::sea_orm::DatabaseConnection;
-use chrono::{NaiveTime, Utc};
+use central_repository_dao::sea_orm::DatabaseConnection;
 
 pub type RcRefCell<T> = Rc<RefCell<T>>;
 
@@ -10,46 +9,16 @@ pub struct AppState {
     pub conn: DatabaseConnection,
 }
 
-#[inline(always)]
-pub fn format_duration(start: NaiveTime) -> String {
-    let diff = Utc::now().time() - start;
-    match diff.num_microseconds() {
-        Some(duration) => {
-            if duration > 1_000_000 {
-                format!("{} s", duration as f64 / 100000.0)
-            } else if duration > 1_000 {
-                format!("{} ms", duration as f64 / 1000.0)
-            } else {
-                format!("{} μs", duration)
-            }
-        }
-        None => format!("{} ms", diff.num_milliseconds()),
-    }
-}
-
 /// Returns the time taken for a function (be it sync or async) to complete
 macro_rules! timed {
     ($description:expr, $function:expr) => {{
-        // imports
         use log::debug;
-        use sqlx::types::chrono::Utc;
+        use std::time::Instant;
 
-        // the real good stuff
-        let start = Utc::now().time();
+        let start = Instant::now();
         let result = $function;
-        let diff = Utc::now().time() - start;
-        let duration = match diff.num_microseconds() {
-            Some(duration) => {
-                if duration > 1_000_000 {
-                    format!("{} s", duration as f64 / 100000.0)
-                } else if duration > 1_000 {
-                    format!("{} ms", duration as f64 / 1000.0)
-                } else {
-                    format!("{} μs", duration)
-                }
-            }
-            None => format!("{} ms", diff.num_milliseconds()),
-        };
+        let elapsed = start.elapsed();
+        let duration = format!("{:?}", elapsed);
         debug!(
             "operation '{}' finished, elapsed: {}",
             $description, duration

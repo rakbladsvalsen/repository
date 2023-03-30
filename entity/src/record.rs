@@ -1,8 +1,9 @@
-use std::collections::HashMap;
-
+use crate::traits::{AsQueryParamFilterable, AsQueryParamSortable};
+use central_repository_macros::AsQueryParam;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::HashMap;
 
 /// Document type used throughout the entire project.
 /// Note that the JSON value can be any JSON object, though
@@ -13,13 +14,26 @@ pub type DynamicHashmap = HashMap<String, Value>;
 #[derive(Default, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, FromJsonQueryResult)]
 pub struct RecordJsonData(pub DynamicHashmap);
 
-#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Deserialize, Serialize, Default)]
+#[derive(
+    AsQueryParam, Clone, Debug, PartialEq, Eq, DeriveEntityModel, Deserialize, Serialize, Default,
+)]
 #[sea_orm(table_name = "record")]
+#[as_query(sort_default_column = "Column::Id", camel_case)]
 pub struct Model {
     #[sea_orm(primary_key)]
     // Don't let users define this field.
+    #[as_query(column = "Column::Id", eq, lt, gt, lte, gte, custom_convert = "*value")]
     #[serde(skip_deserializing)]
     pub id: i32,
+    #[as_query(
+        column = "Column::UploadSessionId",
+        eq,
+        lt,
+        gt,
+        lte,
+        gte,
+        custom_convert = "*value"
+    )]
     pub upload_session_id: i32,
     pub data: RecordJsonData,
 }

@@ -8,15 +8,15 @@ use crate::{
     model_prepare::DBPrepare,
     util::verify_admin,
 };
-use actix_example_core::{
-    sea_orm::{ModelTrait, TryIntoModel},
-    user::Model as UserModel,
-    UserMutation, UserQuery,
-};
 use actix_web::{
     delete, get, post,
     web::{self, Data, Json, Path, ReqData},
     HttpResponse,
+};
+use central_repository_dao::{
+    sea_orm::{ModelTrait, TryIntoModel},
+    user::Model as UserModel,
+    UserMutation, UserQuery,
 };
 use log::info;
 use serde::{Deserialize, Serialize};

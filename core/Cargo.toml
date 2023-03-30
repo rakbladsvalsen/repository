@@ -1,5 +1,5 @@
 [package]
-name = "actix-example-core"
+name = "central-repository-dao"
 version = "0.1.0"
 edition = "2021"
 
@@ -9,6 +9,8 @@ edition = "2021"
 chrono = "0.4.23"
 entity = { path = "../entity" }
 validator = { version = "0.16.0", features = ["validator_derive", "derive"] }
+log = "0.4.17"
+async-trait = "0.1.68"
 
 [dependencies.sea-orm]
 version = "0.11.0"

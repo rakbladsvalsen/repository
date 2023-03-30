@@ -1,8 +1,8 @@
+use crate::traits::{AsQueryParamFilterable, AsQueryParamSortable};
 use central_repository_macros::AsQueryParam;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::Value;
-use sea_orm::{QueryOrder, Select};
 use serde::{Deserialize, Serialize};
 
 #[derive(EnumIter, DeriveActiveEnum, Eq, PartialEq, Deserialize, Serialize, Debug, Clone)]

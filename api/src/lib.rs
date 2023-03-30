@@ -14,8 +14,8 @@ pub mod util;
 
 use std::error::Error;
 
-use actix_example_core::sea_orm::{ConnectOptions, Database};
 use actix_web::{web, App, HttpServer};
+use central_repository_dao::sea_orm::{ConnectOptions, Database};
 use conf::Config;
 use envconfig::Envconfig;
 use format::init_format_routes;

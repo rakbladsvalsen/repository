@@ -49,11 +49,14 @@ where
 {
     fn from(value: PaginatedResponse<T>) -> Self {
         debug!(
-            "total pages: {}, items per page: {}",
-            value.num_pages, value.num_items
+            "page count: {}, item count: {}, returning {} items",
+            value.num_pages,
+            value.num_items,
+            value.items.len()
         );
         HttpResponse::Ok()
             .insert_header(("repository-item-count", value.num_items))
+            .insert_header(("repository-current-page-count", value.items.len()))
             .insert_header(("repository-page-count", value.num_pages))
             .json(value.items)
     }

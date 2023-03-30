@@ -1,19 +1,3 @@
-use actix_example_core::{
-    format_entitlement::{ModelAsQuery, SearchModel as FormatEntitlementSearch},
-    sea_orm::ModelTrait,
-    user::Model,
-    FormatEntitlementMutation, FormatEntitlementQuery, FormatQuery, UserQuery,
-};
-use actix_web::{
-    delete, get, post, web,
-    web::{Json, Query, ReqData},
-    HttpResponse,
-};
-
-use entity::format_entitlement::Model as FormatEntitlementModel;
-use log::info;
-use validator::Validate;
-
 use crate::{
     common::AppState,
     core_middleware::auth::AuthMiddleware,
@@ -21,6 +5,20 @@ use crate::{
     pagination::{APIPager, PaginatedResponse},
     util::verify_admin,
 };
+use actix_web::{
+    delete, get, post, web,
+    web::{Json, Query, ReqData},
+    HttpResponse,
+};
+use central_repository_dao::{
+    format_entitlement::{ModelAsQuery, SearchModel as FormatEntitlementSearch},
+    sea_orm::ModelTrait,
+    user::Model,
+    FormatEntitlementMutation, FormatEntitlementQuery, FormatQuery, GetAllPaginated, UserQuery,
+};
+use entity::format_entitlement::Model as FormatEntitlementModel;
+use log::info;
+use validator::Validate;
 
 #[post("")]
 async fn create_entitlement(
@@ -61,7 +59,8 @@ async fn get_all_format(
         .into_inner();
     info!("search params: {:?}", filter);
     Ok(PaginatedResponse::from(
-        FormatEntitlementQuery::get_all(&db.conn, filter, pager.page, pager.per_page).await?,
+        FormatEntitlementQuery::get_all(&db.conn, &filter, pager.page, pager.per_page, None)
+            .await?,
     )
     .into())
 }

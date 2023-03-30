@@ -1,5 +1,5 @@
-use actix_example_core::user::Model as UserModel;
 use actix_web::web::ReqData;
+use central_repository_dao::user::Model as UserModel;
 use log::info;
 
 use crate::error::APIError;

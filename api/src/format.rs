@@ -1,10 +1,11 @@
-use actix_example_core::{
-    format::ModelAsQuery, sea_orm::TryIntoModel, user::Model, FormatMutation, FormatQuery,
-};
 use actix_web::{
     delete, get, post, web,
     web::{Json, Path, Query, ReqData},
     HttpResponse,
+};
+use central_repository_dao::{
+    format::ModelAsQuery, sea_orm::TryIntoModel, user::Model, FormatMutation, FormatQuery,
+    GetAllPaginated,
 };
 
 use entity::format::Model as FormatModel;
@@ -30,9 +31,8 @@ async fn get_all_format(
     let filter = filter
         .unwrap_or_else(|| web::Query(ModelAsQuery::default()))
         .into_inner();
-    info!("search params: {:?}", filter);
     Ok(PaginatedResponse::from(
-        FormatQuery::get_all(&db.conn, filter, pager.page, pager.per_page).await?,
+        FormatQuery::get_all(&db.conn, &filter, pager.page, pager.per_page, None).await?,
     )
     .into())
 }

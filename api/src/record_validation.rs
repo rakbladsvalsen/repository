@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use actix_example_core::{format::ColumnKind, record::DynamicHashmap};
+use central_repository_dao::{format::ColumnKind, record::DynamicHashmap};
 use entity::format::Model as FormatModel;
 use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};

@@ -1,11 +1,11 @@
 use std::error::Error;
 
-use actix_example_core::sea_orm::{strum::AsRefStr, RuntimeErr};
 use actix_web::{
     error::{self, BlockingError},
     http::StatusCode,
     HttpResponse,
 };
+use central_repository_dao::sea_orm::{strum::AsRefStr, RuntimeErr};
 use log::{error, info};
 use migration::DbErr;
 use serde::Serialize;
