@@ -1,4 +1,7 @@
-use crate::conf::{CONFIG, DECODING_KEY, ENCODING_KEY};
+use crate::{
+    common::handle_fatal,
+    conf::{CONFIG, DECODING_KEY, ENCODING_KEY},
+};
 use actix_web::HttpResponse;
 use central_repository_dao::{sea_orm::DbConn, user::Model as UserModel, UserQuery};
 use chrono::Duration;
@@ -31,8 +34,7 @@ impl Token {
         let claims = Claims::new(sub);
         let token = encode(&JWT_HEADER, &claims, &ENCODING_KEY).map_err(|err| {
             // crypto/memory error
-            error!("Couldn't build token (caused by: {:?})", err);
-            APIError::ServerError
+            handle_fatal!("token creation", err, APIError::ServerError)
         })?;
         Ok(Token { token })
     }

@@ -1,3 +1,4 @@
+use crate::common::handle_fatal;
 use crate::error::APIError;
 use argon2::password_hash::Error as ArgonError;
 use argon2::{
@@ -5,11 +6,10 @@ use argon2::{
     Argon2,
 };
 use lazy_static::lazy_static;
-use log::error;
+use log::{error, info};
 
 lazy_static! {
     static ref ARGON: Argon2<'static> = Argon2::default();
-    // We already initialized safely the envconfig
 }
 
 pub struct UserPassword {
@@ -37,31 +37,26 @@ impl UserPassword {
         let salt = SaltString::generate(&mut OsRng);
         Ok(ARGON
             .hash_password(self.password.as_bytes(), &salt)
-            .map_err(|err| {
-                error!("Hash error (caused by: {err:?}");
-                APIError::ServerError
-            })?
+            .map_err(|err| handle_fatal!("password hashing error", err, APIError::ServerError))?
             .to_string())
     }
 
     /// verify whether a password matches a known stored hash.
     pub fn verify_password(user_input: &String, true_password: &str) -> Result<(), APIError> {
-        let parsed_hash = PasswordHash::new(true_password).map_err(|err| {
-            error!("Hash parsing error (caused by: {err:?}");
-            APIError::ServerError
-        })?;
+        let parsed_hash = PasswordHash::new(true_password)
+            .map_err(|err| handle_fatal!("stored hash parsing", err, APIError::ServerError))?;
         let check = ARGON.verify_password(user_input.as_bytes(), &parsed_hash);
         match check {
             // invalid password
-            Ok(_) => Ok(()),
+            Ok(_) => Ok(info!("successfully validated password")),
             Err(ArgonError::Password) => Err(APIError::InvalidCredentials),
             // this should never happen
             Err(unhandled) => {
-                error!(
-                    "Couldn't verify hashed password (caused by: {:?})",
-                    unhandled
-                );
-                Err(APIError::ServerError)
+                handle_fatal!(
+                    "argon2 verification error",
+                    unhandled,
+                    Err(APIError::ServerError)
+                )
             }
         }
     }

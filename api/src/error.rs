@@ -1,18 +1,19 @@
-use std::error::Error;
-
 use actix_web::{
     error::{self, BlockingError},
     http::StatusCode,
     HttpResponse,
 };
-use central_repository_dao::sea_orm::{strum::AsRefStr, RuntimeErr};
+use central_repository_dao::error::DatabaseQueryError;
 use log::{error, info};
-use migration::DbErr;
+use sea_orm::{DbErr, RuntimeErr};
 use serde::Serialize;
 use sqlx::Error as SQLXError;
+use strum::AsRefStr;
 
 use thiserror::Error;
 use validator::ValidationErrors;
+
+use crate::common::handle_fatal;
 
 pub type APIResult = Result<HttpResponse, APIError>;
 
@@ -33,6 +34,8 @@ pub enum ValidationFailureKind {
     MismatchedDataType,
     #[error("One or more entries either lack or contain invalid/unknown keys")]
     MissingDictKeys,
+    #[error("Only strings and numbers are supported")]
+    InvalidComparisonKind,
 }
 
 #[derive(Error, Debug, Serialize, AsRefStr, Clone)]
@@ -61,6 +64,10 @@ pub enum APIError {
     InvalidOperation(String),
     #[error("Conflicting operation: {0}.")]
     ConflictingOperation(String),
+    #[error("Invalid data type: cannot cast {0} to type {1}")]
+    CastError(String, String),
+    #[error("Query error: {0}")]
+    InvalidQuery(String),
 }
 
 impl APIError {
@@ -78,13 +85,25 @@ impl APIError {
             Self::InsufficientPermissions => StatusCode::FORBIDDEN,
             Self::InvalidOperation(_) => StatusCode::BAD_REQUEST,
             Self::ConflictingOperation(_) => StatusCode::CONFLICT,
+            Self::InvalidQuery(_) => StatusCode::BAD_REQUEST,
+            Self::CastError(_, _) => StatusCode::BAD_REQUEST,
         }
     }
 }
 
-fn handle_fatal(err: Box<dyn Error>) -> APIError {
-    error!("Unhandled error: {:?}: {}", err, err.to_string());
-    APIError::ServerError
+impl From<DatabaseQueryError> for APIError {
+    fn from(value: DatabaseQueryError) -> Self {
+        info!("transforming user-originated db error: {:?}", value);
+        match value {
+            // this is just a regular seaorm DbErr.
+            DatabaseQueryError::NestedDBError(err) => APIError::from(err),
+            DatabaseQueryError::ColumnWithMixedTypesError(_) => {
+                APIError::InvalidQuery(value.to_string())
+            }
+            DatabaseQueryError::InvalidUsage(_) => APIError::InvalidQuery(value.to_string()),
+            _ => APIError::InvalidQuery(value.to_string()),
+        }
+    }
 }
 
 impl From<DbErr> for APIError {
@@ -92,27 +111,23 @@ impl From<DbErr> for APIError {
         match error {
             DbErr::Query(RuntimeErr::SqlxError(SQLXError::Database(err))) => {
                 // SQLX::Database errors don't have any enums inside, so there's
-                // no other way to know what the error was. This only works with
-                // vanilla postgres.
+                // no other way to know what the error was. This "duplicate key value" is something
+                // that only works with postgres.
                 if err.to_string().contains("duplicate key value") {
                     info!("Caught duplicate key error: {}", err);
                     return APIError::DuplicateError;
                 }
-                error!("Unhandled SqlxError::Database error: {}", err);
-                APIError::BadRequest
+                handle_fatal!("SqlxError", err, APIError::ServerError)
             }
             DbErr::RecordNotFound(err) => APIError::NotFound(err),
-            // DbErr::Query(error) => handle_fatal(error.into()),
-            // DbErr::AttrNotSet(error) => handle_fatal(error.into()),
-            // handle any other DbErr
-            unhandled => handle_fatal(unhandled.into()),
+            unhandled => handle_fatal!("unhandled db error", unhandled, APIError::ServerError),
         }
     }
 }
 
 impl From<BlockingError> for APIError {
     fn from(error: BlockingError) -> APIError {
-        handle_fatal(error.into())
+        handle_fatal!("blocking error", error, APIError::ServerError)
     }
 }
 

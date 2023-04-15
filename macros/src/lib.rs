@@ -25,6 +25,7 @@ struct AsQueryInnerFieldOptions {
     eq: Option<bool>,
     lt: Option<bool>,
     gt: Option<bool>,
+    like: Option<bool>,
     contains: Option<bool>,
     custom_convert: Option<String>,
 }
@@ -46,6 +47,9 @@ impl AsQueryInnerFieldOptions {
         }
         if self.gt.is_some() {
             ret.push("gt".into());
+        }
+        if self.like.is_some() {
+            ret.push("like".into());
         }
         if self.contains.is_some() {
             ret.push("contains".into());

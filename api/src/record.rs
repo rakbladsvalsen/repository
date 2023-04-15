@@ -1,5 +1,5 @@
 use crate::{
-    common::{timed, AppState},
+    common::{timed, AppState, DebugMode},
     conf::BULK_INSERT_CHUNK_SIZE,
     core_middleware::auth::AuthMiddleware,
     error::{APIError, APIResult, AsAPIResult},
@@ -8,7 +8,7 @@ use crate::{
 };
 use central_repository_dao::{
     record::ModelAsQuery, upload_session::OutcomeKind, user::Model as UserModel, FormatQuery,
-    GetAllPaginated, RecordMutation, RecordQuery, UploadSessionMutation, UserQuery,
+    RecordMutation, RecordQuery, SearchQuery, UploadSessionMutation, UserQuery,
 };
 
 use actix_web::{
@@ -23,28 +23,41 @@ use log::{debug, error, info};
 use rayon::{prelude::*, slice::ParallelSlice};
 use validator::Validate;
 
-#[get("")]
-async fn get_all_records(
+#[get("/filter")]
+async fn get_all_filtered_records(
     db: web::Data<AppState>,
     pager: Option<Query<APIPager>>,
     filter: Option<Query<ModelAsQuery>>,
     auth: ReqData<UserModel>,
+    query: Json<SearchQuery>,
+    debug: actix_web::web::Query<DebugMode>,
 ) -> APIResult {
-    let pager = pager.unwrap_or_else(|| actix_web::web::Query(APIPager::default()));
-    pager.validate()?;
-    let pager = pager.into_inner();
-    let auth = auth.into_inner();
+    query.validate()?;
+    // get this query's inner contents
+    let query = query.into_inner();
     let filter = filter
         .unwrap_or_else(|| web::Query(ModelAsQuery::default()))
         .into_inner();
-    let records = match auth.is_superuser {
-        true => RecordQuery::get_all(&db.conn, &filter, pager.page, pager.per_page, None).await,
-        _ => {
-            info!("filtering available records for user id: {:?}", auth.id);
-            RecordQuery::get_all_for_user(&db.conn, &filter, pager.page, pager.per_page, auth).await
-        }
-    };
-    Ok(PaginatedResponse::from(records?).into())
+    let pager = pager.unwrap_or_else(|| actix_web::web::Query(APIPager::default()));
+    pager.validate()?;
+    let prepared_search = query.get_readable_formats_for_user(&auth, &db.conn).await?;
+    let pager = pager.into_inner();
+    if **debug {
+        // if "?debug=true" is passed, return the full dict query
+        info!("accessed debugging interface");
+        return HttpResponse::Ok().json(query).to_ok();
+    }
+    // create extra filtering condition to search inside ALL JSONB hashmaps
+    // let extra_condition = prepared_search.build_condition()?;
+    let records = RecordQuery::filter_readable_records(
+        &db.conn,
+        &filter,
+        pager.page,
+        pager.per_page,
+        prepared_search,
+    )
+    .await?;
+    Ok(PaginatedResponse::from(records).into())
 }
 
 #[post("")]
@@ -74,9 +87,12 @@ async fn create_record(
             })?,
     };
     let format_id = format.id;
+    let current_span = tracing::Span::current();
     let payload_validation = timed!(
         "validation of json data",
         actix_web::web::block(move || {
+            // Enter the current logging span (we'll be running in another thread)
+            let _guard = current_span.enter();
             // Validate the entire payload without blocking the main thread. If validation
             // succeeds, we just return the data again (web::block takes ownership of the
             // moved data).
@@ -160,8 +176,9 @@ async fn create_record(
 pub fn init_record_routes(cfg: &mut web::ServiceConfig) {
     let scope = web::scope("/record")
         .wrap(AuthMiddleware)
-        .service(get_all_records)
-        .service(create_record);
+        // .service(get_all_records)
+        .service(create_record)
+        .service(get_all_filtered_records);
 
     cfg.service(scope);
 }

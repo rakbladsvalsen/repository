@@ -59,8 +59,10 @@ async fn login(inbound: Json<LoginCredentials>, db: Data<AppState>) -> APIResult
         "Trying to authenticate user {}/{:?}.",
         user.id, user.username
     );
+    let current_span = tracing::Span::current();
     // don't block the main thread with crypto operations.
     Ok(web::block(move || {
+        let _guard = current_span.enter();
         UserPassword::verify_password(&inbound.password, &user.password)
             .and_then(|_| Token::build(user.id))
     })

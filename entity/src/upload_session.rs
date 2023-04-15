@@ -33,7 +33,15 @@ pub struct Model {
     pub id: i32,
     // This one won't be user-accessible too
     #[serde(skip_deserializing, default = "chrono::offset::Utc::now")]
-    #[as_query(column = "Column::CreatedAt")]
+    #[as_query(
+        eq,
+        lt,
+        gt,
+        lte,
+        gte,
+        column = "Column::CreatedAt",
+        custom_convert = "*value"
+    )]
     pub created_at: DateTime<Utc>,
     #[as_query(
         column = "Column::RecordCount",

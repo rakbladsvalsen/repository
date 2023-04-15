@@ -14,8 +14,12 @@ impl DBPrepare for UserModel {
     async fn prepare(&mut self) -> Result<(), APIError> {
         let password = self.password.clone();
         // perform expensive crypto operation in threadpool
-        self.password =
-            actix_web::web::block(move || UserPassword::from(password).try_into()).await??;
+        let current_span = tracing::Span::current();
+        self.password = actix_web::web::block(move || {
+            let _guard = current_span.enter();
+            UserPassword::from(password).try_into()
+        })
+        .await??;
         Ok(())
     }
 }

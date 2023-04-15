@@ -1,13 +1,8 @@
-use lazy_static::lazy_static;
 use log::info;
 use tracing::{debug_span, field};
 use uuid::Uuid;
 
 use crate::common::create_middleware;
-
-lazy_static! {
-    static ref BEARER: &'static str = "Bearer ";
-}
 
 create_middleware!(
     LogMiddleware,

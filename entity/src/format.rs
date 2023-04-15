@@ -5,13 +5,13 @@ use sea_orm::entity::prelude::*;
 use sea_orm::Select;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ColumnKind {
     Number,
     String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ColumnSchema {
     pub name: String,
     pub kind: ColumnKind,
@@ -30,7 +30,7 @@ pub struct Model {
     #[serde(skip_deserializing)]
     #[as_query(column = "Column::Id", eq, lt, gt, lte, gte, custom_convert = "*value")]
     pub id: i32,
-    #[as_query(column = "Column::Name", eq, contains)]
+    #[as_query(column = "Column::Name", eq, contains, like)]
     pub name: String,
     #[sea_orm(column_type = "Text")]
     pub description: String,
