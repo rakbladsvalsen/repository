@@ -21,7 +21,7 @@ use envconfig::Envconfig;
 use format::init_format_routes;
 use format_entitlement::init_format_entitlement_routes;
 use log::info;
-// use migration::{Migrator, MigratorTrait};
+use migration::{Migrator, MigratorTrait};
 use mimalloc::MiMalloc;
 use record::init_record_routes;
 use user::init_user_routes;
@@ -55,13 +55,14 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         info!("Database pool successfully created.");
         r
     })?;
-    // Migrator::up(&conn, None).await?;
+    Migrator::up(&conn, None).await?;
     // app shared state
     let state = AppState { conn };
 
     HttpServer::new(move || {
         App::new()
             .wrap(LogMiddleware)
+            // .app_data(web::Data::new(tx.clone()))
             .app_data(web::Data::new(state.clone()))
             .configure(init_format_routes)
             .configure(init_record_routes)

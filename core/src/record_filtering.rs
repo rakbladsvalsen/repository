@@ -11,7 +11,10 @@ use entity::{
 use log::{debug, info};
 use rayon::prelude::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use sea_orm::{
-    sea_query::{extension::postgres::PgBinOper, BinOper, Expr, Query},
+    sea_query::{
+        extension::{postgres::PgBinOper, sqlite::SqliteBinOper},
+        BinOper, Expr, Query,
+    },
     ColumnTrait, Condition, DbConn, EntityTrait, ModelTrait, QueryFilter, QuerySelect, QueryTrait,
 };
 use serde::*;
@@ -343,9 +346,10 @@ impl PreparedSearchQuery<'_> {
             };
             // iterate over all expressions inside this group
             for expression in search_group.args.iter() {
+                // TODO: Use PgBinOper once it's released in sea_orm
                 // use weird postgres operator to access JSONB keys (i.e. data->>someField)
                 let mut target_json_column = Expr::col(record::Column::Data)
-                    .binary(PgBinOper::CastJsonField, Expr::val(&expression.column));
+                    .binary(SqliteBinOper::CastJsonField, Expr::val(&expression.column));
 
                 // Get the database type for this column.
                 let against_column_kind =
@@ -372,8 +376,8 @@ impl PreparedSearchQuery<'_> {
                             ColumnKind::Number => {
                                 let casted = array
                                     .par_iter()
-                                    .map(|i| i.as_f64())
-                                    .collect::<Option<Vec<_>>>();
+                                    .map(|i| i.as_f64().unwrap())
+                                    .collect::<Vec<_>>();
                                 Expr::expr(target_json_column).is_in(casted)
                             }
                             ColumnKind::String => {

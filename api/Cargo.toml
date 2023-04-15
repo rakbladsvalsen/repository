@@ -39,4 +39,4 @@ mimalloc = { version = "*", default-features = false }
 async-trait = "0.1.66"
 itertools = "0.10.5"
 strum = { version = "0.24.1", features = ["derive"] }
-sea-orm = { git="https://github.com/SeaQL/sea-orm.git", features = ["sqlx-postgres"] }
+sea-orm = { version="0.11.2", features=["sqlx-postgres"] }
