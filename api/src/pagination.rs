@@ -3,23 +3,22 @@ use log::debug;
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
-const DEFAULT_POSTS_PER_PAGE: u64 = 100;
-
-#[derive(Debug, Clone, Copy, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct APIPager {
+    #[serde(default = "default_page")]
     pub page: u64,
+    #[serde(default = "default_page_size")]
     #[validate(range(min = 1, max = 1000))]
     pub per_page: u64,
 }
 
-impl Default for APIPager {
-    fn default() -> Self {
-        APIPager {
-            page: 0,
-            per_page: DEFAULT_POSTS_PER_PAGE,
-        }
-    }
+fn default_page() -> u64 {
+    0
+}
+
+fn default_page_size() -> u64 {
+    1000
 }
 
 pub struct PaginatedResponse<T> {

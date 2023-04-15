@@ -26,7 +26,7 @@ use validator::Validate;
 #[get("/filter")]
 async fn get_all_filtered_records(
     db: web::Data<AppState>,
-    pager: Option<Query<APIPager>>,
+    pager: Query<APIPager>,
     filter: Option<Query<ModelAsQuery>>,
     auth: ReqData<UserModel>,
     query: Json<SearchQuery>,
@@ -38,7 +38,6 @@ async fn get_all_filtered_records(
     let filter = filter
         .unwrap_or_else(|| web::Query(ModelAsQuery::default()))
         .into_inner();
-    let pager = pager.unwrap_or_else(|| actix_web::web::Query(APIPager::default()));
     pager.validate()?;
     let prepared_search = query.get_readable_formats_for_user(&auth, &db.conn).await?;
     let pager = pager.into_inner();

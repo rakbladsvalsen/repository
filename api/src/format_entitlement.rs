@@ -48,12 +48,11 @@ async fn create_entitlement(
 
 #[get("")]
 async fn get_all_entitlements(
-    pager: Option<Query<APIPager>>,
+    pager: Query<APIPager>,
     filter: Option<Query<ModelAsQuery>>,
     db: web::Data<AppState>,
     auth: ReqData<Model>,
 ) -> APIResult {
-    let pager = *pager.unwrap_or(web::Query(APIPager::default()));
     pager.validate()?;
     let auth = auth.into_inner();
     // let auth = auth.

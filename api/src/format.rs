@@ -22,11 +22,10 @@ use crate::{
 
 #[get("")]
 async fn get_all_format(
-    pager: Option<Query<APIPager>>,
+    pager: Query<APIPager>,
     filter: Option<Query<ModelAsQuery>>,
     db: web::Data<AppState>,
 ) -> APIResult {
-    let pager = pager.unwrap_or_else(|| actix_web::web::Query(APIPager::default()));
     pager.validate()?;
     let filter = filter
         .unwrap_or_else(|| web::Query(ModelAsQuery::default()))
