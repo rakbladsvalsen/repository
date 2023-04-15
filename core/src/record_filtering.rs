@@ -18,6 +18,7 @@ use sea_orm::{
     ColumnTrait, Condition, DbConn, EntityTrait, ModelTrait, QueryFilter, QuerySelect, QueryTrait,
 };
 use serde::*;
+use serde_json::Value;
 // use entity::serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -374,19 +375,13 @@ impl PreparedSearchQuery<'_> {
                         let array = expression.compare_against.as_array().unwrap();
                         match against_column_kind {
                             ColumnKind::Number => {
-                                let casted = array
-                                    .par_iter()
-                                    .map(|i| i.as_f64().unwrap())
-                                    .collect::<Vec<_>>();
+                                let casted =
+                                    PreparedSearchQuery::cast_value_array(array, |v| v.as_f64())?;
                                 Expr::expr(target_json_column).is_in(casted)
                             }
                             ColumnKind::String => {
-                                let casted = array
-                                    .par_iter()
-                                    // unwrap is safe here, because we already checked this
-                                    // argument matches the databae type (string, number, etc).
-                                    .map(|i| String::from(i.as_str().unwrap()))
-                                    .collect::<Vec<String>>();
+                                let casted =
+                                    PreparedSearchQuery::cast_value_array(array, |v| v.as_str())?;
                                 Expr::expr(target_json_column).is_in(casted)
                             }
                         }
@@ -423,5 +418,19 @@ impl PreparedSearchQuery<'_> {
             };
         }
         Ok(extra_condition)
+    }
+
+    fn cast_value_array<'a, T>(
+        values: &'a Vec<Value>,
+        predicate: fn(&'a Value) -> Option<T>,
+    ) -> Result<Vec<T>, DatabaseQueryError>
+    where
+        T: Send,
+    {
+        values
+            .par_iter()
+            .map(predicate)
+            .collect::<Option<Vec<T>>>()
+            .ok_or_else(|| DatabaseQueryError::CastError)
     }
 }
