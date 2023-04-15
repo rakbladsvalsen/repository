@@ -1,12 +1,27 @@
 use std::{cell::RefCell, rc::Rc};
 
-use central_repository_dao::sea_orm::DatabaseConnection;
+use central_repository_dao::{sea_orm::DatabaseConnection, Deserialize, Serialize};
 
 pub type RcRefCell<T> = Rc<RefCell<T>>;
 
 #[derive(Clone, Debug)]
 pub struct AppState {
     pub conn: DatabaseConnection,
+}
+
+#[derive(Default, Serialize, Deserialize)]
+pub struct DebugMode {
+    debug: Option<bool>,
+}
+
+impl std::ops::Deref for DebugMode {
+    type Target = bool;
+    fn deref(&self) -> &Self::Target {
+        match &self.debug.as_ref() {
+            Some(v) => v,
+            _ => &false,
+        }
+    }
 }
 
 /// Returns the time taken for a function (be it sync or async) to complete
@@ -28,6 +43,20 @@ macro_rules! timed {
 }
 
 pub(crate) use timed;
+
+/// Handle fatal errors.
+macro_rules! handle_fatal {
+    ($msg:expr, $err:expr, $return_err:expr) => {{
+        use log::error;
+        use std::backtrace::Backtrace;
+
+        error!("Caught error: [{}] {:?}: {}", $msg, $err, $err.to_string());
+        error!("\n{}", Backtrace::force_capture());
+        $return_err
+    }};
+}
+
+pub(crate) use handle_fatal;
 
 /// Creates a generic middleware.
 macro_rules! create_middleware {

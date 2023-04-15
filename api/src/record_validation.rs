@@ -2,6 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use central_repository_dao::{format::ColumnKind, record::DynamicHashmap};
 use entity::format::Model as FormatModel;
+use itertools::Itertools;
+use log::{debug, info};
 use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
@@ -20,20 +22,38 @@ impl InboundRecordData {
             .schema
             .0
             .iter()
-            .map(|format| format.name.to_owned())
+            .map(|format| &format.name)
+            .sorted()
             .collect::<HashSet<_>>();
+        debug!("valid hashmap keys are: {:?}", valid_keys);
 
-        let schema: HashMap<_, _> = inbound
+        let schema = inbound
             .schema
             .0
             .iter()
-            .map(|f| (f.name.clone(), f.kind.clone()))
+            .map(|f| (&f.name, &f.kind))
             .collect::<HashMap<_, _>>();
 
         let is_error = self.data.par_iter().find_map_any(|hmap| {
+            if hmap.keys().len() != valid_keys.len() {
+                info!(
+                    "hmap key length error: input has {} keys, but expected {}",
+                    hmap.keys().len(),
+                    valid_keys.len()
+                );
+                return Some(APIError::ValidationFailure(
+                    ValidationFailureKind::MissingDictKeys,
+                ));
+            }
+
+            let hmap_keys_sorted = hmap.keys().sorted().collect::<HashSet<&String>>();
             // Validate ALL dicts have the keys present in the schema, otherwise
             // error out
-            if !hmap.keys().eq(valid_keys.iter()) {
+            if !valid_keys.eq(&hmap_keys_sorted) {
+                info!(
+                    "hmap key mismatch: got {:?}, expected {:?}",
+                    hmap_keys_sorted, valid_keys
+                );
                 return Some(APIError::ValidationFailure(
                     ValidationFailureKind::MissingDictKeys,
                 ));

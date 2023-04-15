@@ -1,12 +1,13 @@
-use crate::{pagination_impl::GetAllTrait, GetAllPaginated};
+use crate::{pagination_impl::GetAllTrait, GetAllPaginated, PreparedSearchQuery};
 use ::entity::{
+    error::DatabaseQueryError,
     format,
     format::Entity as Format,
     format_entitlement::{self, Access, SearchModel as FormatEntitlementSearch},
     record, upload_session, user,
     user::Entity as User,
 };
-use sea_orm::{sea_query::Query, *};
+use sea_orm::*;
 
 // Query objects
 pub struct UploadSessionQuery;
@@ -43,38 +44,19 @@ impl GetAllTrait<'_> for RecordQuery {
 // Custom impl's for weird usecases.
 
 impl RecordQuery {
-    /// Get all records where this user has read access
-    pub async fn get_all_for_user<C: ConnectionTrait>(
+    // Get all available records.
+    pub async fn filter_readable_records<C: ConnectionTrait>(
         db: &C,
         filters: &record::ModelAsQuery,
         fetch_page: u64,
         page_size: u64,
-        user: user::Model,
-    ) -> Result<(Vec<record::Model>, u64, u64), DbErr> {
-        // filter formats that this user can read (ReadWrite/ReadOnly)
-        let available_read_formats = user
-            .find_related(format::Entity)
-            .select_only()
-            .column(format::Column::Id) // just pull id
-            .filter(Condition::all().add(
-                format_entitlement::Column::Access.is_in([Access::ReadWrite, Access::ReadOnly]),
-            ))
-            .as_query()
-            .to_owned();
-        // filter upload sessions where the format ID is in the available
-        // list of format IDs available for read
-        let upload_session_filter = Query::select()
-            .column(upload_session::Column::Id)
-            .cond_where(upload_session::Column::FormatId.in_subquery(available_read_formats))
-            .from(upload_session::Entity)
-            .to_owned();
-        // finally, filter records whose upload_session_id is in the above
-        // upload_session ids (basically, filter records this user has read access)
-        let select_stmt = record::Entity::find().filter(
-            Condition::all()
-                .add(record::Column::UploadSessionId.in_subquery(upload_session_filter)),
-        );
-        RecordQuery::get_all(db, filters, fetch_page, page_size, Some(select_stmt)).await
+        prepared_search: PreparedSearchQuery<'_>,
+    ) -> Result<(Vec<record::Model>, u64, u64), DatabaseQueryError> {
+        let extra_condition = prepared_search.build_condition()?;
+        let select = record::Entity::find().filter(extra_condition);
+        RecordQuery::get_all(db, filters, fetch_page, page_size, Some(select))
+            .await
+            .map_err(DatabaseQueryError::from)
     }
 }
 
@@ -137,5 +119,23 @@ impl FormatEntitlementQuery {
         format_entitlement::Entity::find_by_id((id.user_id, id.format_id))
             .one(db)
             .await
+    }
+
+    pub async fn get_all_for_user<C: ConnectionTrait>(
+        db: &C,
+        filters: &format_entitlement::ModelAsQuery,
+        fetch_page: u64,
+        page_size: u64,
+        user: user::Model,
+    ) -> Result<(Vec<format_entitlement::Model>, u64, u64), DbErr> {
+        let select_stmt = match user.is_superuser {
+            true => None,
+            _ => Some(
+                // filter only formats this user can see
+                format_entitlement::Entity::find()
+                    .filter(format_entitlement::Column::UserId.eq(user.id)),
+            ),
+        };
+        FormatEntitlementQuery::get_all(db, filters, fetch_page, page_size, select_stmt).await
     }
 }

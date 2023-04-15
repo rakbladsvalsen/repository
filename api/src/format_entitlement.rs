@@ -14,7 +14,7 @@ use central_repository_dao::{
     format_entitlement::{ModelAsQuery, SearchModel as FormatEntitlementSearch},
     sea_orm::ModelTrait,
     user::Model,
-    FormatEntitlementMutation, FormatEntitlementQuery, FormatQuery, GetAllPaginated, UserQuery,
+    FormatEntitlementMutation, FormatEntitlementQuery, FormatQuery, UserQuery,
 };
 use entity::format_entitlement::Model as FormatEntitlementModel;
 use log::info;
@@ -47,20 +47,28 @@ async fn create_entitlement(
 }
 
 #[get("")]
-async fn get_all_format(
+async fn get_all_entitlements(
     pager: Option<Query<APIPager>>,
     filter: Option<Query<ModelAsQuery>>,
     db: web::Data<AppState>,
+    auth: ReqData<Model>,
 ) -> APIResult {
     let pager = *pager.unwrap_or(web::Query(APIPager::default()));
     pager.validate()?;
+    let auth = auth.into_inner();
+    // let auth = auth.
     let filter = filter
         .unwrap_or_else(|| web::Query(ModelAsQuery::default()))
         .into_inner();
-    info!("search params: {:?}", filter);
     Ok(PaginatedResponse::from(
-        FormatEntitlementQuery::get_all(&db.conn, &filter, pager.page, pager.per_page, None)
-            .await?,
+        FormatEntitlementQuery::get_all_for_user(
+            &db.conn,
+            &filter,
+            pager.page,
+            pager.per_page,
+            auth,
+        )
+        .await?,
     )
     .into())
 }
@@ -89,7 +97,7 @@ pub fn init_format_entitlement_routes(cfg: &mut web::ServiceConfig) {
     let scope = web::scope("/entitlement")
         .wrap(AuthMiddleware)
         .service(delete_entitlement)
-        .service(get_all_format)
+        .service(get_all_entitlements)
         .service(create_entitlement);
 
     cfg.service(scope);
