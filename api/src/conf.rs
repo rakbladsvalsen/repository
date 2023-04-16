@@ -69,7 +69,26 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn verify_keys(&self) -> Result<(), Box<dyn Error>> {
-        get_coding_keys(&self.ed25519_signing_key).map(|_| Ok(()))?
+    pub fn verify(&self) -> Result<(), Box<dyn Error>> {
+        get_coding_keys(&self.ed25519_signing_key)?;
+        if self.max_pagination_size == 0 {
+            return Err("MAX_PAGINATION_SIZE must be greater than 0".into());
+        }
+        if self.default_pagination_size == 0 {
+            return Err("DEFAULT_PAGINATION_SIZE must be greater than 0".into());
+        }
+        if self.bulk_insert_chunk_size == 0 {
+            return Err("BULK_INSERT_CHUNK_SIZE must be greater than 0".into());
+        }
+        if self.token_expiration_seconds == 0 {
+            return Err("TOKEN_EXPIRATION_SECONDS must be greater than 0".into());
+        }
+        if self.db_pool_min_conn == 0 {
+            return Err("DB_POOL_MIN_CONN must be greater than 0".into());
+        }
+        if self.db_pool_min_conn > self.db_pool_max_conn {
+            return Err("DB_POOL_MIN_CONN must be less than DB_POOL_MAX_CONN".into());
+        }
+        Ok(())
     }
 }

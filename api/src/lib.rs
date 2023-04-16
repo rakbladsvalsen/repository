@@ -38,8 +38,8 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     // get env vars
     dotenvy::dotenv().ok();
     let config = Config::init_from_env()?;
-    // make sure we have a valid Ed25519 key
-    config.verify_keys()?;
+    // make sure config is valid
+    config.verify()?;
 
     info!("Using config: {:#?}", config);
 
