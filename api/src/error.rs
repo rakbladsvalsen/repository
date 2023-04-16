@@ -11,7 +11,6 @@ use sqlx::Error as SQLXError;
 use strum::AsRefStr;
 
 use thiserror::Error;
-use validator::ValidationErrors;
 
 use crate::common::handle_fatal;
 
@@ -131,24 +130,6 @@ impl From<DbErr> for APIError {
 impl From<BlockingError> for APIError {
     fn from(error: BlockingError) -> APIError {
         handle_fatal!("blocking error", error, APIError::ServerError)
-    }
-}
-
-impl From<ValidationErrors> for APIError {
-    // transform `validator`'s ValidationErrors into
-    // a proper APIError
-    fn from(error: ValidationErrors) -> APIError {
-        info!("Caught ValidationError: {:?}", error);
-        // let errors = error
-        //     .errors()
-        //     .keys()
-        //     .into_iter()
-        //     // Grab all fields with errors and concatenate them in a
-        //     // nice, readable string, i.e. 'Field1', 'Field2', etc.
-        //     .map(|i| format!("'{}'", *i))
-        //     .collect::<Vec<_>>()
-        //     .join(",");
-        APIError::ValidationFailure(ValidationFailureKind::InvalidRequestData)
     }
 }
 

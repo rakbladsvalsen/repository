@@ -8,7 +8,6 @@ edition = "2021"
 [dependencies]
 chrono = "0.4.23"
 entity = { path = "../entity" }
-validator = { version = "0.16.0", features = ["validator_derive", "derive"] }
 log = "0.4.17"
 async-trait = "0.1.68"
 sea-orm = { git="https://github.com/SeaQL/sea-orm.git", features = ["sqlx-postgres"] }

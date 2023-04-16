@@ -19,7 +19,6 @@ migration = { path = "../migration" }
 pretty_env_logger = "0.4.0"
 log = "0.4.17"
 sqlx = "0.6.2"
-validator = { version = "0.16.0", features = ["derive"] }
 serde_json = "1.0.93"
 rayon = "1.6.1"
 thiserror = "1.0.38"
