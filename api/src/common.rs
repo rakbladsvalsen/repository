@@ -84,7 +84,7 @@ macro_rules! create_middleware {
         where
             S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
             S::Future: 'static,
-            B: 'static,
+            B: 'static, ServiceResponse<B>: std::convert::From<ServiceResponse>
         {
             type Response = ServiceResponse<B>;
             type Error = Error;
@@ -107,7 +107,7 @@ macro_rules! create_middleware {
         where
             S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
             S::Future: 'static,
-            B: 'static,
+            B: 'static, ServiceResponse<B>: std::convert::From<ServiceResponse>
         {
             type Response = ServiceResponse<B>;
             type Error = Error;

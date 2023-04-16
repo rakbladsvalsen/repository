@@ -18,7 +18,6 @@ create_middleware!(
     AuthMiddleware,
     AuthMiddlewareInner,
     fn call(&self, req: ServiceRequest) -> Self::Future {
-        use central_repository_dao::user::Model as UserModel;
         let svc = self.service.clone();
         let app_state = req.app_data::<web::Data<AppState>>().unwrap();
         // just clone the db reference, not the whole app state
@@ -29,8 +28,10 @@ create_middleware!(
             .map(|h| h.to_str().unwrap_or("").to_string());
 
         if token.is_none() {
-            info!("Missing token for request: {:?}", &req);
-            return Box::pin(async move { Err(APIError::MissingAuthHeader.into()) });
+            info!("No auth token found, returning 401");
+            return Box::pin(
+                async move { Ok(req.error_response(APIError::MissingAuthHeader).into()) },
+            );
         }
 
         Box::pin(async move {
@@ -41,15 +42,21 @@ create_middleware!(
                     "Auth error: token is either empty or doesn't start with '{}'",
                     *BEARER
                 );
-                info!("Token was: '{}'", token);
-                return Err(APIError::MissingAuthHeader.into());
+                return Ok(req.error_response(APIError::MissingAuthHeader).into());
             }
             // Trim "Bearer " part; we don't need it.
             let token = token[BEARER.len()..].to_string();
             debug!("token length: {}", token.len());
 
             let token = Token::from(token);
-            let user: UserModel = token.validate(&db).await?;
+
+            // handle token validation
+            let user = token.validate(&db).await;
+            if let Err(err) = user {
+                return Ok(req.error_response(err).into());
+            }
+            let user = user.unwrap();
+
             // add authenticated user to logging span
             // note: we need to drop `extensions` to use `req` again
             {
@@ -57,7 +64,8 @@ create_middleware!(
                 let span = extensions
                     .get::<EnteredSpan>()
                     .expect("Logging middleware must run before auth middleware!");
-                span.record("user", format!("{}/{}", user.id, user.username));
+                span.record("user", &user.username);
+                span.record("user_id", user.id);
                 span.record("superuser", user.is_superuser);
             }
             info!(

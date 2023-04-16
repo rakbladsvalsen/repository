@@ -28,10 +28,16 @@ pub struct Model {
     pub created_at: DateTime<Utc>,
     #[serde(default = "is_superuser_default")]
     pub is_superuser: bool,
+    #[serde(default = "active_default")]
+    pub active: bool,
 }
 
 fn is_superuser_default() -> bool {
     false
+}
+
+fn active_default() -> bool {
+    true
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

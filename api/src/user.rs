@@ -74,6 +74,9 @@ async fn login(inbound: Json<LoginCredentials>, db: Data<AppState>) -> APIResult
         "Trying to authenticate user {}/{:?}.",
         user.id, user.username
     );
+    if !user.active {
+        return APIError::InactiveUser.into();
+    }
     let current_span = tracing::Span::current();
     // don't block the main thread with crypto operations.
     Ok(web::block(move || {

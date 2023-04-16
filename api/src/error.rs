@@ -49,6 +49,8 @@ pub enum APIError {
     ServerError,
     #[error("Couldn't find {0}.")]
     NotFound(String),
+    #[error("Cannot authenticate: user is inactive")]
+    InactiveUser,
     #[error("Invalid credentials.")]
     InvalidCredentials,
     #[error("Invalid or expired token.")]
@@ -89,6 +91,7 @@ impl APIError {
             Self::InvalidQuery(_) => StatusCode::BAD_REQUEST,
             Self::CastError(_, _) => StatusCode::BAD_REQUEST,
             Self::InvalidPageSize(_) => StatusCode::BAD_REQUEST,
+            Self::InactiveUser => StatusCode::UNAUTHORIZED,
         }
     }
 }
@@ -134,8 +137,11 @@ impl From<BlockingError> for APIError {
 }
 
 impl error::ResponseError for APIError {
+    fn status_code(&self) -> StatusCode {
+        self.status_code()
+    }
+
     fn error_response(&self) -> HttpResponse {
-        // transform APIError(s) into Actix HTTPResponse
         let out = OutboundAPIError {
             status_code: u16::from(self.status_code()),
             detail: Some(self.to_string()),

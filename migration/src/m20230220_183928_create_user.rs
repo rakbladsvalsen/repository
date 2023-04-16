@@ -36,6 +36,12 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(false),
                     )
+                    .col(
+                        ColumnDef::new(User::Active)
+                            .boolean()
+                            .not_null()
+                            .default(true),
+                    )
                     .to_owned(),
             )
             .await
@@ -57,4 +63,5 @@ enum User {
     Password,
     CreatedAt,
     IsSuperuser,
+    Active,
 }
