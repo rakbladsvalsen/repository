@@ -21,7 +21,6 @@ use entity::upload_session::Model as UploadSessionModel;
 use futures::future::join_all;
 use log::{debug, error, info};
 use rayon::{prelude::*, slice::ParallelSlice};
-use validator::Validate;
 
 #[get("/filter")]
 async fn get_all_filtered_records(

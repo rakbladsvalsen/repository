@@ -14,7 +14,8 @@ entity = { path = "../entity" }
 tokio = "1.26.0"
 
 [dependencies.sea-orm-migration]
-version = "0.11.2" # sea-orm-migration version
+# version = "0.11.2" # sea-orm-migration version
+git = "https://github.com/SeaQL/sea-orm.git"
 features = [
   "runtime-tokio-native-tls",
   "sqlx-postgres",

@@ -41,7 +41,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     // make sure we have a valid Ed25519 key
     config.verify_keys()?;
 
-    info!("Using config: {:?}", config);
+    info!("Using config: {:#?}", config);
 
     // establish connection to database and apply migrations
     // -> create post table if not exists

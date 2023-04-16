@@ -1,16 +1,35 @@
 use actix_web::HttpResponse;
 use log::debug;
 use serde::{Deserialize, Serialize};
-use validator::Validate;
 
-#[derive(Debug, Deserialize, Validate, Default)]
+use crate::{
+    conf::{DEFAULT_PAGINATION_SIZE, MAX_PAGINATION_SIZE},
+    error::APIError,
+};
+
+#[derive(Debug, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct APIPager {
     #[serde(default = "default_page")]
     pub page: u64,
     #[serde(default = "default_page_size")]
-    #[validate(range(min = 1, max = 1000))]
     pub per_page: u64,
+}
+
+impl APIPager {
+    pub fn validate(&self) -> Result<(), APIError> {
+        if self.per_page == 0 {
+            return Err(APIError::InvalidPageSize(
+                "per_page must be greater than 0".to_string(),
+            ));
+        } else if self.per_page > *MAX_PAGINATION_SIZE {
+            return Err(APIError::InvalidPageSize(format!(
+                "per_page must be less than {}",
+                *MAX_PAGINATION_SIZE
+            )));
+        }
+        Ok(())
+    }
 }
 
 fn default_page() -> u64 {
@@ -18,7 +37,7 @@ fn default_page() -> u64 {
 }
 
 fn default_page_size() -> u64 {
-    1000
+    *DEFAULT_PAGINATION_SIZE
 }
 
 pub struct PaginatedResponse<T> {

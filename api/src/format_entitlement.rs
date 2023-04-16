@@ -18,7 +18,6 @@ use central_repository_dao::{
 };
 use entity::format_entitlement::Model as FormatEntitlementModel;
 use log::info;
-use validator::Validate;
 
 #[post("")]
 async fn create_entitlement(

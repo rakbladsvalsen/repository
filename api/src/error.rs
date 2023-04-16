@@ -68,6 +68,8 @@ pub enum APIError {
     CastError(String, String),
     #[error("Query error: {0}")]
     InvalidQuery(String),
+    #[error("Invalid pagination size: {0}")]
+    InvalidPageSize(String),
 }
 
 impl APIError {
@@ -87,6 +89,7 @@ impl APIError {
             Self::ConflictingOperation(_) => StatusCode::CONFLICT,
             Self::InvalidQuery(_) => StatusCode::BAD_REQUEST,
             Self::CastError(_, _) => StatusCode::BAD_REQUEST,
+            Self::InvalidPageSize(_) => StatusCode::BAD_REQUEST,
         }
     }
 }

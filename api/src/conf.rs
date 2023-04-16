@@ -18,6 +18,8 @@ lazy_static! {
     pub static ref DECODING_KEY: DecodingKey = CODING_KEYS.1.clone();
     pub static ref BULK_INSERT_CHUNK_SIZE: usize = CONFIG.bulk_insert_chunk_size as usize;
     pub static ref PROTECT_SUPERUSER: bool = CONFIG.protect_superuser;
+    pub static ref MAX_PAGINATION_SIZE: u64 = CONFIG.max_pagination_size;
+    pub static ref DEFAULT_PAGINATION_SIZE: u64 = CONFIG.default_pagination_size;
 }
 
 fn get_coding_keys(key: &String) -> Result<(EncodingKey, DecodingKey), Box<dyn Error>> {
@@ -58,6 +60,12 @@ pub struct Config {
 
     #[envconfig(from = "PROTECT_SUPERUSER", default = "true")]
     pub protect_superuser: bool,
+
+    #[envconfig(from = "MAX_PAGINATION_SIZE", default = "1000")]
+    pub max_pagination_size: u64,
+
+    #[envconfig(from = "DEFAULT_PAGINATION_SIZE", default = "1000")]
+    pub default_pagination_size: u64,
 }
 
 impl Config {

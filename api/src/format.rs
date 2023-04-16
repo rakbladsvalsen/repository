@@ -10,7 +10,6 @@ use central_repository_dao::{
 
 use entity::format::Model as FormatModel;
 use log::info;
-use validator::Validate;
 
 use crate::{
     common::AppState,
