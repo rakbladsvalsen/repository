@@ -26,6 +26,7 @@ struct AsQueryInnerFieldOptions {
     lt: Option<bool>,
     gt: Option<bool>,
     like: Option<bool>,
+    ilike: Option<bool>,
     contains: Option<bool>,
     custom_convert: Option<String>,
 }
@@ -50,6 +51,9 @@ impl AsQueryInnerFieldOptions {
         }
         if self.like.is_some() {
             ret.push("like".into());
+        }
+        if self.ilike.is_some() {
+            ret.push("ilike".into());
         }
         if self.contains.is_some() {
             ret.push("contains".into());
@@ -154,12 +158,25 @@ fn expand(ast: DeriveInput) -> syn::Result<TokenStream2> {
 
             let f = Ident::new(&f, field_ident.span());
 
-            filter_fn_matches.push(quote! {
-                select = match self.#field_ident.as_ref() {
-                    Some(value) => select.filter(#db_column.#f(#value)),
-                    _ => select,
-                };
-            });
+            if f.eq("ilike") {
+                // handle special ilike case
+                filter_fn_matches.push(quote! {
+                    select = match self.#field_ident.as_ref() {
+                        Some(value) => select.filter(
+                            Expr::col(#db_column).binary(PgBinOper::ILike, #value)
+                        ),
+                        _ => select,
+                    };
+                });
+            } else {
+                // all other methods can be directly accessed in the column instance
+                filter_fn_matches.push(quote! {
+                    select = match self.#field_ident.as_ref() {
+                        Some(value) => select.filter(#db_column.#f(#value)),
+                        _ => select,
+                    };
+                });
+            }
 
             optionized_fields.push(if path_analyzed.is_option {
                 quote! {
@@ -211,6 +228,7 @@ fn expand(ast: DeriveInput) -> syn::Result<TokenStream2> {
     }
 
     let expanded = quote! {
+        #[allow(dead_code)]
         use sea_orm::QueryOrder;
 
         #[derive(Debug, serde::Deserialize, serde::Serialize, Default)]

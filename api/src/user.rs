@@ -6,17 +6,18 @@ use crate::{
     core_middleware::auth::AuthMiddleware,
     error::{APIError, APIResult, AsAPIResult},
     model_prepare::DBPrepare,
+    pagination::{APIPager, PaginatedResponse},
     util::verify_admin,
 };
 use actix_web::{
     delete, get, post,
-    web::{self, Data, Json, Path, ReqData},
+    web::{self, Data, Json, Path, Query, ReqData},
     HttpResponse,
 };
 use central_repository_dao::{
     sea_orm::{ModelTrait, TryIntoModel},
-    user::Model as UserModel,
-    UserMutation, UserQuery,
+    user::{Model as UserModel, ModelAsQuery},
+    GetAllPaginated, UserMutation, UserQuery,
 };
 use log::info;
 use serde::{Deserialize, Serialize};
@@ -46,6 +47,20 @@ async fn create_user(
     HttpResponse::Created()
         .json(UserMutation::create(&db.conn, user).await?)
         .to_ok()
+}
+
+#[get("")]
+async fn get_all_users(
+    pager: Query<APIPager>,
+    filter: Query<ModelAsQuery>,
+    db: web::Data<AppState>,
+    auth: ReqData<UserModel>,
+) -> APIResult {
+    pager.validate()?;
+    verify_admin(&auth)?;
+    let filter = filter.into_inner();
+    let users = UserQuery::get_all(&db.conn, &filter, pager.page, pager.per_page, None).await?;
+    Ok(PaginatedResponse::from(users).into())
 }
 
 #[post("")]
@@ -117,6 +132,7 @@ pub fn init_user_routes(cfg: &mut web::ServiceConfig) {
     let health_scope = web::scope("/healthcheck").service(healthcheck);
     let user_scope = web::scope("/user")
         .wrap(AuthMiddleware)
+        .service(get_all_users)
         .service(create_user)
         .service(delete_user)
         .service(validate_token);

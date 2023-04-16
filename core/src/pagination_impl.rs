@@ -22,7 +22,7 @@ pub trait GetAllPaginated<'db>: GetAllTrait<'db> {
     ) -> Result<(Vec<Self::ResultModel>, u64, u64), DbErr> {
         let select_stmt = select_stmt.unwrap_or_else(Self::Entity::find);
         debug!("fetching page: {}, page_size: {}", fetch_page, page_size);
-        debug!("filter params: {:?}", filters);
+        debug!("filter params: {:#?}", filters);
         let select = filters.sort(filters.filter(select_stmt));
         let paginator = select.paginate(db, page_size);
         let items_and_pages = paginator.num_items_and_pages().await?;

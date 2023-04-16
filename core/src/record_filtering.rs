@@ -313,7 +313,6 @@ impl PreparedSearchQuery<'_> {
                     .select_only()
                     .column(upload_session::Column::Id);
                 subquery = upload_session_filters.filter(subquery);
-
                 let condition = Query::select()
                     .columns([upload_session::Column::Id])
                     .cond_where(upload_session::Column::Id.in_subquery(subquery.as_query().clone()))

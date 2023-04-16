@@ -22,13 +22,11 @@ use crate::{
 #[get("")]
 async fn get_all_format(
     pager: Query<APIPager>,
-    filter: Option<Query<ModelAsQuery>>,
+    filter: Query<ModelAsQuery>,
     db: web::Data<AppState>,
 ) -> APIResult {
     pager.validate()?;
-    let filter = filter
-        .unwrap_or_else(|| web::Query(ModelAsQuery::default()))
-        .into_inner();
+    let filter = filter.into_inner();
     Ok(PaginatedResponse::from(
         FormatQuery::get_all(&db.conn, &filter, pager.page, pager.per_page, None).await?,
     )

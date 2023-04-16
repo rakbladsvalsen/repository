@@ -9,6 +9,7 @@ pub mod model_prepare;
 pub mod pagination;
 pub mod record;
 pub mod record_validation;
+pub mod upload_session;
 pub mod user;
 pub mod util;
 
@@ -26,7 +27,10 @@ use mimalloc::MiMalloc;
 use record::init_record_routes;
 use user::init_user_routes;
 
-use crate::{common::AppState, core_middleware::logging::LogMiddleware};
+use crate::{
+    common::AppState, core_middleware::logging::LogMiddleware,
+    upload_session::init_upload_session_routes,
+};
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
@@ -62,12 +66,12 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     HttpServer::new(move || {
         App::new()
             .wrap(LogMiddleware)
-            // .app_data(web::Data::new(tx.clone()))
             .app_data(web::Data::new(state.clone()))
             .configure(init_format_routes)
             .configure(init_record_routes)
             .configure(init_user_routes)
             .configure(init_format_entitlement_routes)
+            .configure(init_upload_session_routes)
     })
     .bind(format!("{}:{}", config.http_address, config.http_port))?
     .run()

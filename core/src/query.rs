@@ -17,6 +17,12 @@ pub struct UserQuery;
 pub struct RecordQuery;
 
 // Implement get_all for all of them
+impl GetAllTrait<'_> for UserQuery {
+    type Entity = user::Entity;
+    type FilterQueryModel = user::ModelAsQuery;
+    type ResultModel = user::Model;
+}
+
 impl GetAllTrait<'_> for FormatQuery {
     type Entity = format::Entity;
     type FilterQueryModel = format::ModelAsQuery;
@@ -137,5 +143,24 @@ impl FormatEntitlementQuery {
             ),
         };
         FormatEntitlementQuery::get_all(db, filters, fetch_page, page_size, select_stmt).await
+    }
+}
+
+impl UploadSessionQuery {
+    pub async fn get_all_for_user<C: ConnectionTrait>(
+        db: &C,
+        filters: &upload_session::ModelAsQuery,
+        fetch_page: u64,
+        page_size: u64,
+        user: user::Model,
+    ) -> Result<(Vec<upload_session::Model>, u64, u64), DbErr> {
+        let select_stmt = match user.is_superuser {
+            true => None,
+            _ => Some(
+                // filter this user's upload sessions
+                upload_session::Entity::find().filter(upload_session::Column::UserId.eq(user.id)),
+            ),
+        };
+        UploadSessionQuery::get_all(db, filters, fetch_page, page_size, select_stmt).await
     }
 }

@@ -26,7 +26,7 @@ use rayon::{prelude::*, slice::ParallelSlice};
 async fn get_all_filtered_records(
     db: web::Data<AppState>,
     pager: Query<APIPager>,
-    filter: Option<Query<ModelAsQuery>>,
+    filter: Query<ModelAsQuery>,
     auth: ReqData<UserModel>,
     query: Json<SearchQuery>,
     debug: actix_web::web::Query<DebugMode>,
@@ -34,9 +34,7 @@ async fn get_all_filtered_records(
     query.validate()?;
     // get this query's inner contents
     let query = query.into_inner();
-    let filter = filter
-        .unwrap_or_else(|| web::Query(ModelAsQuery::default()))
-        .into_inner();
+    let filter = filter.into_inner();
     pager.validate()?;
     let prepared_search = query.get_readable_formats_for_user(&auth, &db.conn).await?;
     let pager = pager.into_inner();
