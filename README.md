@@ -21,6 +21,8 @@ This app provides some knobs that allow you to tune and configure it via environ
 | `DB_POOL_MAX_CONN`             | No        | Maximum limit of connections for the database threadpool. Set to `100` by default.           |
 | `BULK_INSERT_CHUNK_SIZE`       | No        | Create batch insert jobs with `N` entries at most. Set to `250` by default.                  |
 | `PROTECT_SUPERUSER`            | No        | Prevent CRUD operations against superusers. Set to `true` by default.                        |
+| `MAX_PAGINATION_SIZE`          | No        | Max pagination size that can be requested by any user. Set to `1000` by default.             |
+| `DEFAULT_PAGINATION_SIZE`      | No        | Default pagination size. Set to `1000` by default.                                           |
 
 Note ¹: This key can be generated with openssl:
 ```bash
