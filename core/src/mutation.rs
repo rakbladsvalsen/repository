@@ -90,6 +90,19 @@ impl UserMutation {
         user.id = NotSet;
         user.insert(db).await
     }
+
+    pub async fn update(
+        db: &DbConn,
+        old_user: user::Model,
+        new_user: user::UpdatableModel,
+    ) -> Result<user::Model, DbErr> {
+        let mut user = old_user.into_active_model();
+        user.username = new_user.username.map(Set).unwrap_or(NotSet);
+        user.password = new_user.password.map(Set).unwrap_or(NotSet);
+        user.is_superuser = new_user.is_superuser.map(Set).unwrap_or(NotSet);
+        user.active = new_user.active.map(Set).unwrap_or(NotSet);
+        user.update(db).await
+    }
 }
 
 pub struct FormatEntitlementMutation;

@@ -23,17 +23,8 @@ impl From<String> for UserPassword {
     }
 }
 
-impl TryFrom<UserPassword> for String {
-    type Error = APIError;
-
-    /// Converts this password to a hashed one (if possible).
-    fn try_from(value: UserPassword) -> Result<Self, Self::Error> {
-        value.perform()
-    }
-}
-
 impl UserPassword {
-    fn perform(&self) -> Result<String, APIError> {
+    pub fn to_hash(&self) -> Result<String, APIError> {
         let salt = SaltString::generate(&mut OsRng);
         Ok(ARGON
             .hash_password(self.password.as_bytes(), &salt)

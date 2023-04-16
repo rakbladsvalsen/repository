@@ -32,6 +32,15 @@ pub struct Model {
     pub active: bool,
 }
 
+#[derive(Deserialize, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdatableModel {
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub is_superuser: Option<bool>,
+    pub active: Option<bool>,
+}
+
 fn is_superuser_default() -> bool {
     false
 }

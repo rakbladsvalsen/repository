@@ -10,13 +10,13 @@ use crate::{
     util::verify_admin,
 };
 use actix_web::{
-    delete, get, post,
+    delete, get, patch, post,
     web::{self, Data, Json, Path, Query, ReqData},
     HttpResponse,
 };
 use central_repository_dao::{
     sea_orm::{ModelTrait, TryIntoModel},
-    user::{Model as UserModel, ModelAsQuery},
+    user::{Model as UserModel, ModelAsQuery, UpdatableModel},
     GetAllPaginated, UserMutation, UserQuery,
 };
 use log::info;
@@ -70,11 +70,8 @@ async fn login(inbound: Json<LoginCredentials>, db: Data<AppState>) -> APIResult
         .await?
         .ok_or(APIError::InvalidCredentials)?
         .try_into_model()?;
-    info!(
-        "Trying to authenticate user {}/{:?}.",
-        user.id, user.username
-    );
     if !user.active {
+        info!("user {:?} (id={}) is inactive", user.username, user.id);
         return APIError::InactiveUser.into();
     }
     let current_span = tracing::Span::current();
@@ -102,7 +99,7 @@ async fn delete_user(
     let user = UserQuery::find_by_id(&db.conn, id)
         .await?
         .ok_or_else(|| APIError::NotFound(format!("user with ID {id}")))?;
-    if !*PROTECT_SUPERUSER && user.is_superuser {
+    if *PROTECT_SUPERUSER && user.is_superuser {
         info!(
             "Prevented user deletion: user ID {} tried to delete a superuser (ID: {})",
             auth.id, id
@@ -123,6 +120,31 @@ async fn validate_token(token: Json<Token>, db: Data<AppState>) -> APIResult {
     HttpResponse::Ok().json(user).to_ok()
 }
 
+#[patch("{id}")]
+async fn update_user(
+    id: Path<i32>,
+    user: Json<UpdatableModel>,
+    db: Data<AppState>,
+    auth: ReqData<UserModel>,
+) -> APIResult {
+    if !auth.is_superuser && auth.id != *id {
+        info!("non-superuser attempted to update another user");
+        return APIError::InsufficientPermissions.into();
+    }
+    if !auth.is_superuser && (user.is_superuser.is_some() || user.active.is_some()) {
+        info!("non-superuser attempted to update sensitive fields");
+        return APIError::InsufficientPermissions.into();
+    }
+    let user_to_update = UserQuery::find_by_id(&db.conn, *id)
+        .await?
+        .ok_or_else(|| APIError::NotFound(format!("user with ID {id}")))?;
+    if *PROTECT_SUPERUSER && user_to_update.is_superuser {
+        return APIError::ConflictingOperation("can't modify a superuser".into()).into();
+    }
+    let user = UserMutation::update(&db.conn, user_to_update, user.into_inner()).await?;
+    HttpResponse::Ok().json(user).to_ok()
+}
+
 #[get("")]
 async fn healthcheck() -> APIResult {
     info!("healthcheck ping");
@@ -138,6 +160,7 @@ pub fn init_user_routes(cfg: &mut web::ServiceConfig) {
         .service(get_all_users)
         .service(create_user)
         .service(delete_user)
+        .service(update_user)
         .service(validate_token);
     cfg.service(health_scope);
     cfg.service(login_scope);
