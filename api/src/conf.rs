@@ -66,6 +66,9 @@ pub struct Config {
 
     #[envconfig(from = "DEFAULT_PAGINATION_SIZE", default = "1000")]
     pub default_pagination_size: u64,
+
+    #[envconfig(from = "WORKERS", default = "16")]
+    pub workers: u8,
 }
 
 impl Config {
@@ -76,6 +79,9 @@ impl Config {
         }
         if self.default_pagination_size == 0 {
             return Err("DEFAULT_PAGINATION_SIZE must be greater than 0".into());
+        }
+        if self.default_pagination_size > self.max_pagination_size {
+            return Err("DEFAULT_PAGINATION_SIZE must be less than MAX_PAGINATION_SIZE".into());
         }
         if self.bulk_insert_chunk_size == 0 {
             return Err("BULK_INSERT_CHUNK_SIZE must be greater than 0".into());
@@ -88,6 +94,9 @@ impl Config {
         }
         if self.db_pool_min_conn > self.db_pool_max_conn {
             return Err("DB_POOL_MIN_CONN must be less than DB_POOL_MAX_CONN".into());
+        }
+        if self.workers == 0 {
+            return Err("WORKERS must be greater than 0".into());
         }
         Ok(())
     }

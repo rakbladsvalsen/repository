@@ -106,7 +106,8 @@ impl SearchArguments {
             ComparisonOperator::In => {
                 self.validate_array(|i| i.is_number(), "one or more items isn't a number")
             }
-            ComparisonOperator::Gt
+            ComparisonOperator::Eq
+            | ComparisonOperator::Gt
             | ComparisonOperator::Lt
             | ComparisonOperator::Lte
             | ComparisonOperator::Gte => match self.compare_against.is_number() {
@@ -385,8 +386,12 @@ impl PreparedSearchQuery<'_> {
                         .binary(PgBinOper::ILike, expression.compare_against.as_str()),
                     ComparisonOperator::Like => target_json_column
                         .binary(BinOper::Like, expression.compare_against.as_str()),
-                    ComparisonOperator::Eq => target_json_column
-                        .binary(BinOper::Equal, expression.compare_against.as_str()),
+                    ComparisonOperator::Eq => match against_column_kind {
+                        ColumnKind::Number => target_json_column
+                            .binary(BinOper::Equal, expression.compare_against.as_f64()),
+                        ColumnKind::String => target_json_column
+                            .binary(BinOper::Equal, expression.compare_against.as_str()),
+                    },
                     ComparisonOperator::Lt => target_json_column.binary(
                         BinOper::SmallerThan,
                         cast_as_f64(&expression.compare_against)?,

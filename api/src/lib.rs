@@ -74,6 +74,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             .configure(init_upload_session_routes)
     })
     .bind(format!("{}:{}", config.http_address, config.http_port))?
+    .workers(config.workers.into())
     .run()
     .await?;
     Ok(())
