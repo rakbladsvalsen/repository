@@ -56,15 +56,9 @@ async fn get_all_entitlements(
     let auth = auth.into_inner();
     // let auth = auth.
     let filter = filter.into_inner();
+    let pager = pager.into_inner().into();
     Ok(PaginatedResponse::from(
-        FormatEntitlementQuery::get_all_for_user(
-            &db.conn,
-            &filter,
-            pager.page,
-            pager.per_page,
-            auth,
-        )
-        .await?,
+        FormatEntitlementQuery::get_all_for_user(&db.conn, &filter, &pager, auth).await?,
     )
     .into())
 }

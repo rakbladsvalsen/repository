@@ -24,6 +24,8 @@ This app provides some knobs that allow you to tune and configure it via environ
 | `MAX_PAGINATION_SIZE`          | No        | Max pagination size that can be requested by any user. Set to `1000` by default.             |
 | `DEFAULT_PAGINATION_SIZE`      | No        | Default pagination size. Set to `1000` by default.                                           |
 | `WORKERS`                      | No        | Sets number of workers to start (per bind address). Set to `16` by default.                  |
+| `RETURN_QUERY_COUNT`           | No        | Whether to return or not item and page counts for all queries. Set to `true` by default.     |
+
 
 Note ¹: This key can be generated with openssl:
 ```bash

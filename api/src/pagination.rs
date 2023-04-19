@@ -1,19 +1,47 @@
 use actix_web::HttpResponse;
+use central_repository_dao::PaginationOptions;
 use log::debug;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    conf::{DEFAULT_PAGINATION_SIZE, MAX_PAGINATION_SIZE},
+    conf::{DEFAULT_PAGINATION_SIZE, MAX_PAGINATION_SIZE, RETURN_QUERY_COUNT},
     error::APIError,
 };
+
+fn default_page() -> u64 {
+    0
+}
+
+fn default_page_size() -> u64 {
+    *DEFAULT_PAGINATION_SIZE
+}
+
+fn default_full_count() -> bool {
+    *RETURN_QUERY_COUNT
+}
 
 #[derive(Debug, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct APIPager {
+    /// The page to fetch.
     #[serde(default = "default_page")]
     pub page: u64,
+    /// The number of items per page.
     #[serde(default = "default_page_size")]
     pub per_page: u64,
+    /// Whether to fetch items and page count.
+    #[serde(default = "default_full_count")]
+    pub count: bool,
+}
+
+impl From<APIPager> for PaginationOptions {
+    fn from(pager: APIPager) -> Self {
+        PaginationOptions {
+            fetch_page: pager.page,
+            page_size: pager.per_page,
+            items_and_pages: pager.count,
+        }
+    }
 }
 
 impl APIPager {
@@ -30,14 +58,6 @@ impl APIPager {
         }
         Ok(())
     }
-}
-
-fn default_page() -> u64 {
-    0
-}
-
-fn default_page_size() -> u64 {
-    *DEFAULT_PAGINATION_SIZE
 }
 
 pub struct PaginatedResponse<T> {

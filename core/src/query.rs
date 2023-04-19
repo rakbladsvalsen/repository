@@ -1,4 +1,6 @@
-use crate::{pagination_impl::GetAllTrait, GetAllPaginated, PreparedSearchQuery};
+use crate::{
+    pagination_impl::GetAllTrait, GetAllPaginated, PaginationOptions, PreparedSearchQuery,
+};
 use ::entity::{
     error::DatabaseQueryError,
     format,
@@ -54,13 +56,14 @@ impl RecordQuery {
     pub async fn filter_readable_records<C: ConnectionTrait>(
         db: &C,
         filters: &record::ModelAsQuery,
-        fetch_page: u64,
-        page_size: u64,
+        pagination_options: &PaginationOptions,
         prepared_search: PreparedSearchQuery<'_>,
     ) -> Result<(Vec<record::Model>, u64, u64), DatabaseQueryError> {
         let extra_condition = prepared_search.build_condition()?;
-        let select = record::Entity::find().filter(extra_condition);
-        RecordQuery::get_all(db, filters, fetch_page, page_size, Some(select))
+        let select = record::Entity::find()
+            .filter(extra_condition)
+            .order_by_asc(record::Column::Id);
+        RecordQuery::get_all(db, filters, pagination_options, Some(select))
             .await
             .map_err(DatabaseQueryError::from)
     }
@@ -130,8 +133,7 @@ impl FormatEntitlementQuery {
     pub async fn get_all_for_user<C: ConnectionTrait>(
         db: &C,
         filters: &format_entitlement::ModelAsQuery,
-        fetch_page: u64,
-        page_size: u64,
+        pagination_options: &PaginationOptions,
         user: user::Model,
     ) -> Result<(Vec<format_entitlement::Model>, u64, u64), DbErr> {
         let select_stmt = match user.is_superuser {
@@ -142,7 +144,7 @@ impl FormatEntitlementQuery {
                     .filter(format_entitlement::Column::UserId.eq(user.id)),
             ),
         };
-        FormatEntitlementQuery::get_all(db, filters, fetch_page, page_size, select_stmt).await
+        FormatEntitlementQuery::get_all(db, filters, pagination_options, select_stmt).await
     }
 }
 
@@ -150,8 +152,7 @@ impl UploadSessionQuery {
     pub async fn get_all_for_user<C: ConnectionTrait>(
         db: &C,
         filters: &upload_session::ModelAsQuery,
-        fetch_page: u64,
-        page_size: u64,
+        pagination_options: &PaginationOptions,
         user: user::Model,
     ) -> Result<(Vec<upload_session::Model>, u64, u64), DbErr> {
         let select_stmt = match user.is_superuser {
@@ -161,6 +162,6 @@ impl UploadSessionQuery {
                 upload_session::Entity::find().filter(upload_session::Column::UserId.eq(user.id)),
             ),
         };
-        UploadSessionQuery::get_all(db, filters, fetch_page, page_size, select_stmt).await
+        UploadSessionQuery::get_all(db, filters, pagination_options, select_stmt).await
     }
 }

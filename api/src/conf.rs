@@ -20,6 +20,7 @@ lazy_static! {
     pub static ref PROTECT_SUPERUSER: bool = CONFIG.protect_superuser;
     pub static ref MAX_PAGINATION_SIZE: u64 = CONFIG.max_pagination_size;
     pub static ref DEFAULT_PAGINATION_SIZE: u64 = CONFIG.default_pagination_size;
+    pub static ref RETURN_QUERY_COUNT: bool = CONFIG.return_query_count;
 }
 
 fn get_coding_keys(key: &String) -> Result<(EncodingKey, DecodingKey), Box<dyn Error>> {
@@ -69,6 +70,9 @@ pub struct Config {
 
     #[envconfig(from = "WORKERS", default = "16")]
     pub workers: u8,
+
+    #[envconfig(from = "RETURN_QUERY_COUNT", default = "true")]
+    pub return_query_count: bool,
 }
 
 impl Config {

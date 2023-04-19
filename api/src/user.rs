@@ -59,7 +59,8 @@ async fn get_all_users(
     pager.validate()?;
     verify_admin(&auth)?;
     let filter = filter.into_inner();
-    let users = UserQuery::get_all(&db.conn, &filter, pager.page, pager.per_page, None).await?;
+    let pager = pager.into_inner().into();
+    let users = UserQuery::get_all(&db.conn, &filter, &pager, None).await?;
     Ok(PaginatedResponse::from(users).into())
 }
 

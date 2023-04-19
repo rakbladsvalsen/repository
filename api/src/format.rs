@@ -27,10 +27,11 @@ async fn get_all_format(
 ) -> APIResult {
     pager.validate()?;
     let filter = filter.into_inner();
-    Ok(PaginatedResponse::from(
-        FormatQuery::get_all(&db.conn, &filter, pager.page, pager.per_page, None).await?,
+    let pager = pager.into_inner().into();
+    Ok(
+        PaginatedResponse::from(FormatQuery::get_all(&db.conn, &filter, &pager, None).await?)
+            .into(),
     )
-    .into())
 }
 
 #[get("{id}")]

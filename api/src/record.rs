@@ -37,7 +37,7 @@ async fn get_all_filtered_records(
     let filter = filter.into_inner();
     pager.validate()?;
     let prepared_search = query.get_readable_formats_for_user(&auth, &db.conn).await?;
-    let pager = pager.into_inner();
+    let pager = pager.into_inner().into();
     if **debug {
         // if "?debug=true" is passed, return the full dict query
         info!("accessed debugging interface");
@@ -45,14 +45,8 @@ async fn get_all_filtered_records(
     }
     // create extra filtering condition to search inside ALL JSONB hashmaps
     // let extra_condition = prepared_search.build_condition()?;
-    let records = RecordQuery::filter_readable_records(
-        &db.conn,
-        &filter,
-        pager.page,
-        pager.per_page,
-        prepared_search,
-    )
-    .await?;
+    let records =
+        RecordQuery::filter_readable_records(&db.conn, &filter, &pager, prepared_search).await?;
     Ok(PaginatedResponse::from(records).into())
 }
 
