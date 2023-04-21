@@ -24,19 +24,25 @@ lazy_static! {
     };
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Deserialize)]
 pub struct Token {
     token: String,
 }
 
+#[derive(Debug, Serialize, Clone)]
+pub struct TokenResponse {
+    token: String,
+    user: UserModel,
+}
+
 impl Token {
-    pub fn build(sub: i32) -> Result<Self, APIError> {
-        let claims = Claims::new(sub);
+    pub fn build(user: UserModel) -> Result<TokenResponse, APIError> {
+        let claims = Claims::new(user.id);
         let token = encode(&JWT_HEADER, &claims, &ENCODING_KEY).map_err(|err| {
             // crypto/memory error
             handle_fatal!("token creation", err, APIError::ServerError)
         })?;
-        Ok(Token { token })
+        Ok(TokenResponse { token, user })
     }
 
     /// Validates a JWT token. Returns an instance of the user on success.
@@ -66,8 +72,8 @@ impl From<String> for Token {
     }
 }
 
-impl From<Token> for HttpResponse {
-    fn from(value: Token) -> Self {
+impl From<TokenResponse> for HttpResponse {
+    fn from(value: TokenResponse) -> Self {
         HttpResponse::Ok().json(value)
     }
 }

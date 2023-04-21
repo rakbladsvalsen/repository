@@ -80,10 +80,23 @@ async fn login(inbound: Json<LoginCredentials>, db: Data<AppState>) -> APIResult
     Ok(web::block(move || {
         let _guard = current_span.enter();
         UserPassword::verify_password(&inbound.password, &user.password)
-            .and_then(|_| Token::build(user.id))
+            .and_then(|_| Token::build(user))
     })
     .await??
     .into())
+}
+
+#[get("{id}")]
+async fn get_user(id: Path<i32>, db: Data<AppState>, auth: ReqData<UserModel>) -> APIResult {
+    let id = id.into_inner();
+    if !auth.is_superuser && auth.id != id {
+        // don't allow non-superusers to view other users
+        return Err(APIError::AdminOnlyResource);
+    }
+    let user = UserQuery::find_by_id(&db.conn, id)
+        .await?
+        .ok_or_else(|| APIError::NotFound(format!("user with ID {id}")))?;
+    HttpResponse::Ok().json(user).to_ok()
 }
 
 #[delete("{id}")]
@@ -162,6 +175,7 @@ pub fn init_user_routes(cfg: &mut web::ServiceConfig) {
         .service(create_user)
         .service(delete_user)
         .service(update_user)
+        .service(get_user)
         .service(validate_token);
     cfg.service(health_scope);
     cfg.service(login_scope);
