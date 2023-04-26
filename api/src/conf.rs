@@ -21,6 +21,7 @@ lazy_static! {
     pub static ref MAX_PAGINATION_SIZE: u64 = CONFIG.max_pagination_size;
     pub static ref DEFAULT_PAGINATION_SIZE: u64 = CONFIG.default_pagination_size;
     pub static ref RETURN_QUERY_COUNT: bool = CONFIG.return_query_count;
+    pub static ref MAX_JSON_PAYLOAD_SIZE: usize = CONFIG.max_json_payload_size as usize;
 }
 
 fn get_coding_keys(key: &String) -> Result<(EncodingKey, DecodingKey), Box<dyn Error>> {
@@ -73,6 +74,10 @@ pub struct Config {
 
     #[envconfig(from = "RETURN_QUERY_COUNT", default = "true")]
     pub return_query_count: bool,
+
+    // set by default to 100_000 bytes (100 KB)
+    #[envconfig(from = "MAX_JSON_PAYLOAD_SIZE", default = "100000")]
+    pub max_json_payload_size: u64,
 }
 
 impl Config {
@@ -101,6 +106,9 @@ impl Config {
         }
         if self.workers == 0 {
             return Err("WORKERS must be greater than 0".into());
+        }
+        if self.max_json_payload_size == 0 {
+            return Err("MAX_JSON_PAYLOAD_SIZE must be greater than 0".into());
         }
         Ok(())
     }
