@@ -1,6 +1,7 @@
 use actix_web::{
     error::{self, BlockingError},
     http::StatusCode,
+    web::{self, JsonConfig, PathConfig, QueryConfig},
     HttpResponse,
 };
 use central_repository_dao::error::DatabaseQueryError;
@@ -98,7 +99,6 @@ impl APIError {
 
 impl From<DatabaseQueryError> for APIError {
     fn from(value: DatabaseQueryError) -> Self {
-        info!("transforming user-originated db error: {:?}", value);
         match value {
             // this is just a regular seaorm DbErr.
             DatabaseQueryError::NestedDBError(err) => APIError::from(err),
@@ -142,6 +142,7 @@ impl error::ResponseError for APIError {
     }
 
     fn error_response(&self) -> HttpResponse {
+        info!("APIError: {:#?}", self);
         let out = OutboundAPIError {
             status_code: u16::from(self.status_code()),
             detail: Some(self.to_string()),
@@ -159,6 +160,30 @@ impl From<APIError> for APIResult {
     fn from(value: APIError) -> Self {
         Err(value)
     }
+}
+
+pub fn json_error_handler() -> JsonConfig {
+    web::JsonConfig::default()
+        // limit request payload size
+        .limit(1_000_000)
+        .error_handler(|err, _| {
+            info!("JSON deserialization error: {:?}", err);
+            APIError::BadRequest.into()
+        })
+}
+
+pub fn query_error_handler() -> QueryConfig {
+    web::QueryConfig::default().error_handler(|err, _| {
+        info!("Query param deserialization error: {:?}", err);
+        APIError::BadRequest.into()
+    })
+}
+
+pub fn path_error_handler() -> PathConfig {
+    PathConfig::default().error_handler(|err, _| {
+        info!("Path param deserialization error: {:?}", err);
+        APIError::BadRequest.into()
+    })
 }
 
 pub trait AsAPIResult {

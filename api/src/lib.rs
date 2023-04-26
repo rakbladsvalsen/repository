@@ -28,7 +28,9 @@ use record::init_record_routes;
 use user::init_user_routes;
 
 use crate::{
-    common::AppState, core_middleware::logging::LogMiddleware,
+    common::AppState,
+    core_middleware::logging::LogMiddleware,
+    error::{json_error_handler, path_error_handler, query_error_handler},
     upload_session::init_upload_session_routes,
 };
 
@@ -65,6 +67,9 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
     HttpServer::new(move || {
         App::new()
+            .app_data(json_error_handler())
+            .app_data(query_error_handler())
+            .app_data(path_error_handler())
             .wrap(LogMiddleware)
             .app_data(web::Data::new(state.clone()))
             .configure(init_format_routes)

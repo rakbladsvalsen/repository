@@ -40,7 +40,7 @@ async fn create_entitlement(
             info!("Couldn't find format id {}", inbound.format_id);
             APIError::NotFound(format!("format with ID {}", inbound.format_id))
         })?;
-    HttpResponse::Ok()
+    HttpResponse::Created()
         .json(FormatEntitlementMutation::create(&db.conn, inbound.into_inner()).await?)
         .to_ok()
 }
@@ -54,7 +54,6 @@ async fn get_all_entitlements(
 ) -> APIResult {
     pager.validate()?;
     let auth = auth.into_inner();
-    // let auth = auth.
     let filter = filter.into_inner();
     let pager = pager.into_inner().into();
     Ok(PaginatedResponse::from(

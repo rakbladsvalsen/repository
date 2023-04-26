@@ -100,13 +100,9 @@ async fn get_user(id: Path<i32>, db: Data<AppState>, auth: ReqData<UserModel>) -
 }
 
 #[delete("{id}")]
-async fn delete_user(
-    id: Option<Path<i32>>,
-    db: Data<AppState>,
-    auth: ReqData<UserModel>,
-) -> APIResult {
+async fn delete_user(id: Path<i32>, db: Data<AppState>, auth: ReqData<UserModel>) -> APIResult {
     verify_admin(&auth)?;
-    let id = id.ok_or(APIError::BadRequest)?.into_inner();
+    let id = id.into_inner();
     if auth.id == id {
         return APIError::InvalidOperation("You can't delete yourself".into()).into();
     }
