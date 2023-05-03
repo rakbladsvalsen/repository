@@ -136,15 +136,12 @@ impl FormatEntitlementQuery {
         pagination_options: &PaginationOptions,
         user: user::Model,
     ) -> Result<(Vec<format_entitlement::Model>, u64, u64), DbErr> {
-        let select_stmt = match user.is_superuser {
-            true => None,
-            _ => Some(
-                // filter only formats this user can see
-                format_entitlement::Entity::find()
-                    .filter(format_entitlement::Column::UserId.eq(user.id)),
-            ),
-        };
-        FormatEntitlementQuery::get_all(db, filters, pagination_options, select_stmt).await
+        let mut select_stmt =
+            format_entitlement::Entity::find().order_by_asc(format_entitlement::Column::CreatedAt);
+        if !user.is_superuser {
+            select_stmt = select_stmt.filter(format_entitlement::Column::UserId.eq(user.id));
+        }
+        FormatEntitlementQuery::get_all(db, filters, pagination_options, Some(select_stmt)).await
     }
 }
 
@@ -155,13 +152,11 @@ impl UploadSessionQuery {
         pagination_options: &PaginationOptions,
         user: user::Model,
     ) -> Result<(Vec<upload_session::Model>, u64, u64), DbErr> {
-        let select_stmt = match user.is_superuser {
-            true => None,
-            _ => Some(
-                // filter this user's upload sessions
-                upload_session::Entity::find().filter(upload_session::Column::UserId.eq(user.id)),
-            ),
-        };
-        UploadSessionQuery::get_all(db, filters, pagination_options, select_stmt).await
+        let mut select_stmt =
+            upload_session::Entity::find().order_by_asc(upload_session::Column::CreatedAt);
+        if !user.is_superuser {
+            select_stmt = select_stmt.filter(upload_session::Column::UserId.eq(user.id));
+        }
+        UploadSessionQuery::get_all(db, filters, pagination_options, Some(select_stmt)).await
     }
 }

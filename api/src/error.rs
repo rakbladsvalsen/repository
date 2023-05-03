@@ -13,7 +13,7 @@ use strum::AsRefStr;
 
 use thiserror::Error;
 
-use crate::common::handle_fatal;
+use crate::{common::handle_fatal, conf::MAX_JSON_PAYLOAD_SIZE};
 
 pub type APIResult = Result<HttpResponse, APIError>;
 
@@ -165,7 +165,7 @@ impl From<APIError> for APIResult {
 pub fn json_error_handler() -> JsonConfig {
     web::JsonConfig::default()
         // limit request payload size
-        .limit(1_000_000)
+        .limit(*MAX_JSON_PAYLOAD_SIZE)
         .error_handler(|err, _| {
             info!("JSON deserialization error: {:?}", err);
             APIError::BadRequest.into()

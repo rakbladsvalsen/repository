@@ -38,6 +38,7 @@ async fn get_all_filtered_records(
     pager.validate()?;
     let prepared_search = query.get_readable_formats_for_user(&auth, &db.conn).await?;
     let pager = pager.into_inner().into();
+    info!("record query: {query:#?}");
     if **debug {
         // if "?debug=true" is passed, return the full dict query
         info!("accessed debugging interface");
