@@ -38,6 +38,8 @@ pub enum ComparisonOperator {
     In,
     ILike,
     Like,
+    Regex,
+    RegexCaseInsensitive,
 }
 
 impl Default for ComparisonOperator {
@@ -87,14 +89,16 @@ impl SearchArguments {
             ComparisonOperator::In => {
                 self.validate_array(|i| i.is_string(), "one or more items isn't a string")
             }
-            ComparisonOperator::Eq | ComparisonOperator::Like | ComparisonOperator::ILike => {
-                match self.compare_against.is_string() {
-                    true => Ok(()),
-                    _ => Err(DatabaseQueryError::InvalidUsage(
-                        "cannot use this operator on non-string types".into(),
-                    )),
-                }
-            }
+            ComparisonOperator::Eq
+            | ComparisonOperator::Like
+            | ComparisonOperator::ILike
+            | ComparisonOperator::Regex
+            | ComparisonOperator::RegexCaseInsensitive => match self.compare_against.is_string() {
+                true => Ok(()),
+                _ => Err(DatabaseQueryError::InvalidUsage(
+                    "cannot use this operator on non-string types".into(),
+                )),
+            },
             _ => Err(DatabaseQueryError::InvalidUsage(
                 "cannot use numeric operator on strings".into(),
             )),
@@ -382,6 +386,21 @@ impl PreparedSearchQuery<'_> {
                             }
                         }
                     }
+                    ComparisonOperator::Regex => Expr::cust_with_exprs(
+                        // use weird postgres regex operator (case sensitive)
+                        "$1 ~ $2",
+                        [
+                            target_json_column,
+                            expression.compare_against.as_str().into(),
+                        ],
+                    ),
+                    ComparisonOperator::RegexCaseInsensitive => Expr::cust_with_exprs(
+                        "$1 ~* $2",
+                        [
+                            target_json_column,
+                            expression.compare_against.as_str().into(),
+                        ],
+                    ),
                     ComparisonOperator::ILike => target_json_column
                         .binary(PgBinOper::ILike, expression.compare_against.as_str()),
                     ComparisonOperator::Like => target_json_column

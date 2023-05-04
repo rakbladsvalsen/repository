@@ -118,9 +118,14 @@ impl From<DbErr> for APIError {
                 // SQLX::Database errors don't have any enums inside, so there's
                 // no other way to know what the error was. This "duplicate key value" is something
                 // that only works with postgres.
-                if err.to_string().contains("duplicate key value") {
+                let err_as_string = err.to_string().to_lowercase();
+                if err_as_string.contains("duplicate key value") {
                     info!("Caught duplicate key error: {}", err);
                     return APIError::DuplicateError;
+                } else if err_as_string.contains("invalid regular expression") {
+                    info!("got invalid regular expression");
+                    return DatabaseQueryError::InvalidUsage("malformed regular expression".into())
+                        .into();
                 }
                 handle_fatal!("SqlxError", err, APIError::ServerError)
             }
