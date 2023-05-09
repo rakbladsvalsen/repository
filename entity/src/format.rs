@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 use crate::traits::{AsQueryParamFilterable, AsQueryParamSortable};
 use central_repository_macros::AsQueryParam;
 use chrono::{DateTime, Utc};
@@ -14,11 +16,19 @@ pub enum ColumnKind {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ColumnSchema {
     pub name: String,
+    pub regex: Option<String>,
     pub kind: ColumnKind,
 }
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, FromJsonQueryResult)]
 pub struct FormatSchema(pub Vec<ColumnSchema>);
+
+impl Deref for FormatSchema {
+    type Target = Vec<ColumnSchema>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 #[derive(AsQueryParam, Clone, Debug, PartialEq, Eq, DeriveEntityModel, Deserialize, Serialize)]
 #[sea_orm(table_name = "format")]

@@ -3,11 +3,15 @@ use std::collections::{HashMap, HashSet};
 use central_repository_dao::{format::ColumnKind, record::DynamicHashmap};
 use entity::format::Model as FormatModel;
 use itertools::Itertools;
-use log::{debug, info};
+use log::{debug, error, info};
 use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use crate::error::{APIError, ValidationFailureKind};
+use crate::{
+    common::handle_fatal,
+    error::{APIError, ValidationFailureKind},
+};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -20,7 +24,6 @@ impl InboundRecordData {
     pub fn validate_blocking(&self, inbound: &FormatModel) -> Result<(), APIError> {
         let valid_keys = inbound
             .schema
-            .0
             .iter()
             .map(|format| &format.name)
             .sorted()
@@ -29,10 +32,27 @@ impl InboundRecordData {
 
         let schema = inbound
             .schema
-            .0
             .iter()
             .map(|f| (&f.name, &f.kind))
             .collect::<HashMap<_, _>>();
+
+        let column_to_regex = inbound
+            .schema
+            .iter()
+            .filter(|f| f.regex.is_some())
+            .map(|f| {
+                Ok((
+                    &f.name,
+                    // note: this regex is guaranteed to be valid since we validated in when
+                    // we created the model
+                    Regex::new(f.regex.as_ref().unwrap()).map_err(|err| {
+                        handle_fatal!("regex is invalid", err, APIError::ServerError)
+                    })?,
+                ))
+            })
+            .collect::<Result<HashMap<_, _>, APIError>>()?;
+
+        debug!("column to regex mapping: {:#?}", column_to_regex);
 
         let is_error = self.data.par_iter().find_map_any(|hmap| {
             if hmap.keys().len() != valid_keys.len() {
@@ -70,6 +90,17 @@ impl InboundRecordData {
             }) {
                 return Some(APIError::ValidationFailure(
                     ValidationFailureKind::MismatchedDataType,
+                ));
+            }
+
+            // match regex, if enabled
+            if column_to_regex.iter().any(|(key, regex)| {
+                let value = hmap.get(*key).unwrap().as_str().unwrap();
+                !regex.is_match(value)
+            }) {
+                info!("regex match failure for map: {:#?}", hmap);
+                return Some(APIError::ValidationFailure(
+                    ValidationFailureKind::RegexMatchFailure,
                 ));
             }
 

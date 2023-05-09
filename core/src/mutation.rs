@@ -1,17 +1,30 @@
 use ::entity::{
+    error::DatabaseQueryError,
     format,
-    format::Entity as Format,
+    format::{ColumnKind, Entity as Format},
     format_entitlement, record,
     record::Entity as Record,
     upload_session::{self, OutcomeKind},
     user,
 };
+use regex::Regex;
 use sea_orm::*;
 
 pub struct FormatMutation;
 
 impl FormatMutation {
-    pub async fn create(db: &DbConn, model: format::Model) -> Result<format::ActiveModel, DbErr> {
+    pub async fn create(
+        db: &DbConn,
+        model: format::Model,
+    ) -> Result<format::ActiveModel, DatabaseQueryError> {
+        let is_regex_invalid = model.schema.iter().filter(|i| i.regex.is_some()).any(|i| {
+            // only string columns can be checked against a regex
+            i.kind != ColumnKind::String || Regex::new(i.regex.as_ref().unwrap().as_str()).is_err()
+        });
+        if is_regex_invalid {
+            return Err(DatabaseQueryError::InvalidRegex);
+        }
+
         format::ActiveModel {
             name: Set(model.name),
             description: Set(model.description),
@@ -21,6 +34,7 @@ impl FormatMutation {
         }
         .save(db)
         .await
+        .map_err(Into::into)
     }
 
     pub async fn delete(db: &DbConn, id: i32) -> Result<DeleteResult, DbErr> {

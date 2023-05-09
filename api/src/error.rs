@@ -36,6 +36,8 @@ pub enum ValidationFailureKind {
     MissingDictKeys,
     #[error("Only strings and numbers are supported")]
     InvalidComparisonKind,
+    #[error("Regex match failure: data doesn't match regex")]
+    RegexMatchFailure,
 }
 
 #[derive(Error, Debug, Serialize, AsRefStr, Clone)]

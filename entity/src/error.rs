@@ -15,6 +15,8 @@ pub enum DatabaseQueryError {
     ColumnWithMixedTypesError(String),
     #[error("Empty query")]
     EmptyQuery,
+    #[error("Regex error")]
+    InvalidRegex,
     #[error("Internal DB error: {0}")]
     NestedDBError(#[source] DbErr),
 }
