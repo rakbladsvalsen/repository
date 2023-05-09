@@ -39,13 +39,13 @@ impl InboundRecordData {
         let column_to_regex = inbound
             .schema
             .iter()
-            .filter(|f| f.regex.is_some())
-            .map(|f| {
+            .flat_map(|schema| schema.regex.as_ref().map(|regex| (&schema.name, regex)))
+            .map(|(name, regex)| {
                 Ok((
-                    &f.name,
-                    // note: this regex is guaranteed to be valid since we validated in when
+                    name,
+                    // note: this regex is guaranteed to be valid since we validated it when
                     // we created the model
-                    Regex::new(f.regex.as_ref().unwrap()).map_err(|err| {
+                    Regex::new(regex.as_str()).map_err(|err| {
                         handle_fatal!("regex is invalid", err, APIError::ServerError)
                     })?,
                 ))
