@@ -8,6 +8,7 @@ use entity::{
     traits::AsQueryParamFilterable,
     upload_session, user,
 };
+use itertools::Itertools;
 use log::{debug, info};
 use rayon::prelude::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use sea_orm::{
@@ -260,18 +261,17 @@ impl SearchQuery {
             .par_iter()
             .map(|(db_column_schema, _)| (&db_column_schema.name, &db_column_schema.kind))
             .collect::<HashSet<_>>();
+
         let mut unique_column_names = HashSet::new();
         let multitype_columns = unique_column_types
             .iter()
-            .flat_map(|(name, _)| match unique_column_names.insert(name) {
-                false => Some(name.as_str()), // already exists
-                _ => None,
-            })
-            .collect::<Vec<_>>();
+            .filter_map(|(name, _)| (!unique_column_names.insert(name)).then_some(name.as_str()))
+            .take(5)
+            .collect::<HashSet<_>>();
 
         if !multitype_columns.is_empty() {
             return Err(DatabaseQueryError::ColumnWithMixedTypesError(
-                multitype_columns.join(", "),
+                multitype_columns.into_iter().join(","),
             ));
         }
 

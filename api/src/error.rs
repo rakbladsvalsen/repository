@@ -104,10 +104,6 @@ impl From<DatabaseQueryError> for APIError {
         match value {
             // this is just a regular seaorm DbErr.
             DatabaseQueryError::NestedDBError(err) => APIError::from(err),
-            DatabaseQueryError::ColumnWithMixedTypesError(_) => {
-                APIError::InvalidQuery(value.to_string())
-            }
-            DatabaseQueryError::InvalidUsage(_) => APIError::InvalidQuery(value.to_string()),
             _ => APIError::InvalidQuery(value.to_string()),
         }
     }
