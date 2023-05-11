@@ -6,14 +6,15 @@ use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::Select;
 use serde::{Deserialize, Serialize};
+use std::hash::Hash;
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ColumnKind {
     Number,
     String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ColumnSchema {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]

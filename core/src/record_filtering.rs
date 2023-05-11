@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use entity::{
     error::DatabaseQueryError,
@@ -116,13 +116,15 @@ impl SearchArguments {
             | ComparisonOperator::Lte
             | ComparisonOperator::Gte => match self.compare_against.is_number() {
                 true => Ok(()),
-                _ => Err(DatabaseQueryError::InvalidUsage(
-                    "cannot use numeric operator on non-numeric types".into(),
-                )),
+                _ => Err(DatabaseQueryError::InvalidUsage(format!(
+                    "'{}' can only be compared against numbers.",
+                    self.column
+                ))),
             },
-            _ => Err(DatabaseQueryError::InvalidUsage(
-                "cannot use string operators on numeric types".into(),
-            )),
+            _ => Err(DatabaseQueryError::InvalidUsage(format!(
+                "'{}' is numeric; you can only use numeric operators.",
+                self.column
+            ))),
         }
     }
 
@@ -176,7 +178,7 @@ pub struct SearchQuery {
 #[derive(Debug)]
 pub struct PreparedSearchQuery<'a> {
     available_read_formats: Vec<i32>,
-    seen_columns: HashMap<String, ColumnKind>,
+    requested_search_columns: HashMap<&'a String, ColumnKind>,
     query: &'a SearchQuery,
 }
 
@@ -239,50 +241,55 @@ impl SearchQuery {
             available_read_formats
         );
 
-        let mut seen_columns = HashMap::new();
-
-        // filter through the schemas of all available formats in parallel
-        // and only pick those that contain the requested
         let filterable_columns = formats
             .into_par_iter()
             .flat_map(|format| format.schema.0.into_par_iter())
             .filter_map(|db_column_schema| {
+                // filter through the schemas of all available formats in parallel
+                // and only pick those that contain the requested search columns.
                 filtered_user_columns
                     .get(&db_column_schema.name)
                     .map(|search_args| (db_column_schema, search_args))
             })
             .collect::<Vec<_>>();
 
-        for (db_column_schema, search_arg) in filterable_columns.into_iter() {
-            // validate this argument has everything right: if it's an array,
-            // make sure it has the right data types, if it's an string, make sure
-            // it has the right operator and so forth.
-            search_arg.validate(&db_column_schema.kind)?;
+        // verify that all columns being searched have the same data type.
+        // this can be an issue when searching across multiple formats with identical column names
+        // but different types.
+        let unique_column_types = filterable_columns
+            .par_iter()
+            .map(|(db_column_schema, _)| (&db_column_schema.name, &db_column_schema.kind))
+            .collect::<HashSet<_>>();
+        let mut unique_column_names = HashSet::new();
+        let multitype_columns = unique_column_types
+            .iter()
+            .flat_map(|(name, _)| match unique_column_names.insert(name) {
+                false => Some(name.as_str()), // already exists
+                _ => None,
+            })
+            .collect::<Vec<_>>();
 
-            // also make sure we don't have more than 1 format with the same column name but
-            // different column type, i.e. string and number, etc.
-
-            match seen_columns.get(&db_column_schema.name) {
-                Some(seen_column_kind) => {
-                    if seen_column_kind == &db_column_schema.kind {
-                        continue;
-                    }
-
-                    return Err(DatabaseQueryError::ColumnWithMixedTypesError(format!(
-                        "column {} has mixed types",
-                        db_column_schema.name
-                    )));
-                }
-                _ => {
-                    seen_columns.insert(db_column_schema.name, db_column_schema.kind);
-                }
-            };
+        if !multitype_columns.is_empty() {
+            return Err(DatabaseQueryError::ColumnWithMixedTypesError(
+                multitype_columns.join(", "),
+            ));
         }
 
-        info!("requested column types: {:#?}", seen_columns);
+        // finally, make sure user-entered data matches the database type,
+        // i.e. if the user entered a string, we can only search for strings.
+        let requested_search_columns = filterable_columns
+            .into_par_iter()
+            .map(|(db_column_schema, search_args)| {
+                search_args
+                    .validate(&db_column_schema.kind)
+                    .map(|_| (&search_args.column, db_column_schema.kind))
+            })
+            .collect::<Result<HashMap<_, _>, DatabaseQueryError>>()?;
+
+        info!("requested column types: {:#?}", requested_search_columns);
         Ok(PreparedSearchQuery {
             available_read_formats,
-            seen_columns,
+            requested_search_columns,
             query: self,
         })
     }
@@ -345,8 +352,10 @@ impl PreparedSearchQuery<'_> {
                     .binary(PgBinOper::CastJsonField, Expr::val(&expression.column));
 
                 // Get the database type for this column.
-                let against_column_kind =
-                    self.seen_columns.get(&expression.column).ok_or_else(|| {
+                let against_column_kind = self
+                    .requested_search_columns
+                    .get(&expression.column)
+                    .ok_or_else(|| {
                         info!("couldn't find column kind for column {}", expression.column);
                         DatabaseQueryError::InvalidColumnRequested(expression.column.clone())
                     })?;
