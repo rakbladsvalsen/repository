@@ -231,13 +231,6 @@ impl SearchQuery {
             filtered_formats = filtered_formats.filter(format::Column::Id.is_in(formats.clone()));
         }
 
-        // Enforce valid JSON key lookups.
-        // Since this app will handle multiple formats (where one or multiple
-        // formats may share column names), users might attempt to search
-        // across multiple formats, so we have to make sure we can only filter
-        // one column and one type at any given time, i.e. we cannot do something
-        // like ColumnA = "some" and ColumnA > "some".
-        //
         let formats = filtered_formats.all(db).await?;
         let available_read_formats = formats.par_iter().map(|f| f.id).collect::<Vec<_>>();
 
@@ -250,39 +243,38 @@ impl SearchQuery {
 
         // filter through the schemas of all available formats in parallel
         // and only pick those that contain the requested
-        let filterable_formats = formats
+        let filterable_columns = formats
             .into_par_iter()
             .flat_map(|format| format.schema.0.into_par_iter())
-            .filter(|column| filtered_user_columns.contains_key(&column.name))
+            .filter_map(|db_column_schema| {
+                filtered_user_columns
+                    .get(&db_column_schema.name)
+                    .map(|search_args| (db_column_schema, search_args))
+            })
             .collect::<Vec<_>>();
 
-        for schema in filterable_formats.into_iter() {
-            // skip checking columns that weren't requested for filtering.
-            if !filtered_user_columns.contains_key(&schema.name) {
-                continue;
-            }
-
-            // make sure the entered data can be compared against the values we have
-            // in database.
-            let arg = *filtered_user_columns.get(&schema.name).unwrap();
-
+        for (db_column_schema, search_arg) in filterable_columns.into_iter() {
             // validate this argument has everything right: if it's an array,
             // make sure it has the right data types, if it's an string, make sure
             // it has the right operator and so forth.
-            arg.validate(&schema.kind)?;
+            search_arg.validate(&db_column_schema.kind)?;
 
-            // also make sure we don't have more than 1 format with the same column name
-            match seen_columns.get(&schema.name) {
+            // also make sure we don't have more than 1 format with the same column name but
+            // different column type, i.e. string and number, etc.
+
+            match seen_columns.get(&db_column_schema.name) {
                 Some(seen_column_kind) => {
-                    if *seen_column_kind != schema.kind {
-                        return Err(DatabaseQueryError::ColumnWithMixedTypesError(format!(
-                            "column {} has mixed types",
-                            schema.name
-                        )));
+                    if seen_column_kind == &db_column_schema.kind {
+                        continue;
                     }
+
+                    return Err(DatabaseQueryError::ColumnWithMixedTypesError(format!(
+                        "column {} has mixed types",
+                        db_column_schema.name
+                    )));
                 }
                 _ => {
-                    seen_columns.insert(schema.name, schema.kind);
+                    seen_columns.insert(db_column_schema.name, db_column_schema.kind);
                 }
             };
         }
