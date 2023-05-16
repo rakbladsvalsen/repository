@@ -1,8 +1,7 @@
 use crate::{
     auth::jwt::Token,
     auth::password::UserPassword,
-    common::AppState,
-    conf::PROTECT_SUPERUSER,
+    conf::{DB_POOL, PROTECT_SUPERUSER},
     core_middleware::auth::AuthMiddleware,
     error::{APIError, APIResult, AsAPIResult},
     model_prepare::DBPrepare,
@@ -11,7 +10,7 @@ use crate::{
 };
 use actix_web::{
     delete, get, patch, post,
-    web::{self, Data, Json, Path, Query, ReqData},
+    web::{self, Json, Path, Query, ReqData},
     HttpResponse,
 };
 use central_repository_dao::{
@@ -30,14 +29,11 @@ pub struct LoginCredentials {
 }
 
 #[post("")]
-async fn create_user(
-    user: Json<UserModel>,
-    db: Data<AppState>,
-    auth: ReqData<UserModel>,
-) -> APIResult {
+async fn create_user(user: Json<UserModel>, auth: ReqData<UserModel>) -> APIResult {
     verify_admin(&auth)?;
+    let db = DB_POOL.get().expect("database is not initialized");
     let mut user = user.into_inner();
-    let exists = UserQuery::find_by_username(&db.conn, &user.username).await?;
+    let exists = UserQuery::find_by_username(db, &user.username).await?;
     if exists.is_some() {
         info!("Username '{}' already exists.", user.username);
         return APIError::DuplicateError.into();
@@ -45,7 +41,7 @@ async fn create_user(
     // prepare this user for insert... (i.e. set password, etc).
     user.prepare().await?;
     HttpResponse::Created()
-        .json(UserMutation::create(&db.conn, user).await?)
+        .json(UserMutation::create(db, user).await?)
         .to_ok()
 }
 
@@ -53,21 +49,22 @@ async fn create_user(
 async fn get_all_users(
     pager: Query<APIPager>,
     filter: Query<ModelAsQuery>,
-    db: web::Data<AppState>,
     auth: ReqData<UserModel>,
 ) -> APIResult {
+    let db = DB_POOL.get().expect("database is not initialized");
     pager.validate()?;
     verify_admin(&auth)?;
     let filter = filter.into_inner();
     let pager = pager.into_inner().into();
-    let users = UserQuery::get_all(&db.conn, &filter, &pager, None).await?;
+    let users = UserQuery::get_all(db, &filter, &pager, None).await?;
     Ok(PaginatedResponse::from(users).into())
 }
 
 #[post("")]
-async fn login(inbound: Json<LoginCredentials>, db: Data<AppState>) -> APIResult {
+async fn login(inbound: Json<LoginCredentials>) -> APIResult {
+    let db = DB_POOL.get().expect("database is not initialized");
     let inbound = inbound.into_inner();
-    let user = UserQuery::find_by_username(&db.conn, &inbound.username)
+    let user = UserQuery::find_by_username(db, &inbound.username)
         .await?
         .ok_or(APIError::InvalidCredentials)?
         .try_into_model()?;
@@ -87,26 +84,28 @@ async fn login(inbound: Json<LoginCredentials>, db: Data<AppState>) -> APIResult
 }
 
 #[get("{id}")]
-async fn get_user(id: Path<i32>, db: Data<AppState>, auth: ReqData<UserModel>) -> APIResult {
+async fn get_user(id: Path<i32>, auth: ReqData<UserModel>) -> APIResult {
+    let db = DB_POOL.get().expect("database is not initialized");
     let id = id.into_inner();
     if !auth.is_superuser && auth.id != id {
         // don't allow non-superusers to view other users
         return Err(APIError::AdminOnlyResource);
     }
-    let user = UserQuery::find_by_id(&db.conn, id)
+    let user = UserQuery::find_by_id(db, id)
         .await?
         .ok_or_else(|| APIError::NotFound(format!("user with ID {id}")))?;
     HttpResponse::Ok().json(user).to_ok()
 }
 
 #[delete("{id}")]
-async fn delete_user(id: Path<i32>, db: Data<AppState>, auth: ReqData<UserModel>) -> APIResult {
+async fn delete_user(id: Path<i32>, auth: ReqData<UserModel>) -> APIResult {
     verify_admin(&auth)?;
+    let db = DB_POOL.get().expect("database is not initialized");
     let id = id.into_inner();
     if auth.id == id {
         return APIError::InvalidOperation("You can't delete yourself".into()).into();
     }
-    let user = UserQuery::find_by_id(&db.conn, id)
+    let user = UserQuery::find_by_id(db, id)
         .await?
         .ok_or_else(|| APIError::NotFound(format!("user with ID {id}")))?;
     if *PROTECT_SUPERUSER && user.is_superuser {
@@ -120,13 +119,14 @@ async fn delete_user(id: Path<i32>, db: Data<AppState>, auth: ReqData<UserModel>
         "Preparing to delete user ID {} (requested by user ID {}).",
         id, auth.id
     );
-    user.delete(&db.conn).await?;
+    user.delete(db).await?;
     HttpResponse::NoContent().finish().to_ok()
 }
 
 #[post("/token/validate")]
-async fn validate_token(token: Json<Token>, db: Data<AppState>) -> APIResult {
-    let user = token.into_inner().validate(&db.conn).await?;
+async fn validate_token(token: Json<Token>) -> APIResult {
+    let db = DB_POOL.get().expect("database is not initialized");
+    let user = token.into_inner().validate(db).await?;
     HttpResponse::Ok().json(user).to_ok()
 }
 
@@ -134,9 +134,9 @@ async fn validate_token(token: Json<Token>, db: Data<AppState>) -> APIResult {
 async fn update_user(
     id: Path<i32>,
     user: Json<UpdatableModel>,
-    db: Data<AppState>,
     auth: ReqData<UserModel>,
 ) -> APIResult {
+    let db = DB_POOL.get().expect("database is not initialized");
     if !auth.is_superuser && auth.id != *id {
         info!("non-superuser attempted to update another user");
         return APIError::InsufficientPermissions.into();
@@ -145,13 +145,13 @@ async fn update_user(
         info!("non-superuser attempted to update sensitive fields");
         return APIError::InsufficientPermissions.into();
     }
-    let user_to_update = UserQuery::find_by_id(&db.conn, *id)
+    let user_to_update = UserQuery::find_by_id(db, *id)
         .await?
         .ok_or_else(|| APIError::NotFound(format!("user with ID {id}")))?;
     if *PROTECT_SUPERUSER && user_to_update.is_superuser {
         return APIError::ConflictingOperation("can't modify a superuser".into()).into();
     }
-    let user = UserMutation::update(&db.conn, user_to_update, user.into_inner()).await?;
+    let user = UserMutation::update(db, user_to_update, user.into_inner()).await?;
     HttpResponse::Ok().json(user).to_ok()
 }
 

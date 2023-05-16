@@ -1,13 +1,16 @@
-use std::error::Error;
-
 use envconfig::Envconfig;
 use jsonwebtoken::{DecodingKey, EncodingKey};
 use lazy_static::lazy_static;
+use std::error::Error;
 
 use base64::engine::general_purpose;
 use base64::Engine as _;
 use log::info;
+use once_cell::sync::OnceCell;
 use ring::signature::{Ed25519KeyPair, KeyPair};
+use sea_orm::DatabaseConnection;
+
+pub static DB_POOL: OnceCell<DatabaseConnection> = OnceCell::new();
 
 lazy_static! {
     // we can safely call unwrap() here because the private key has been already

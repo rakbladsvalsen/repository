@@ -1,5 +1,5 @@
 use crate::{
-    common::AppState,
+    conf::DB_POOL,
     core_middleware::auth::AuthMiddleware,
     error::{APIError, APIResult, AsAPIResult},
     pagination::{APIPager, PaginatedResponse},
@@ -22,26 +22,26 @@ use log::info;
 #[post("")]
 async fn create_entitlement(
     inbound: Json<FormatEntitlementModel>,
-    db: web::Data<AppState>,
     auth: ReqData<Model>,
 ) -> APIResult {
     verify_admin(&auth)?;
+    let db = DB_POOL.get().expect("database is not initialized");
     // make sure we're assigning a format to a non-superuser
-    UserQuery::find_nonsuperuser_by_id(&db.conn, inbound.user_id)
+    UserQuery::find_nonsuperuser_by_id(db, inbound.user_id)
         .await?
         .ok_or_else(|| {
             info!("Couldn't find user id {}", inbound.user_id);
             APIError::NotFound(format!("non-superuser with ID {}", inbound.user_id))
         })?;
     // make sure this format exists before creating the entitlement
-    FormatQuery::find_by_id(&db.conn, inbound.format_id)
+    FormatQuery::find_by_id(db, inbound.format_id)
         .await?
         .ok_or_else(|| {
             info!("Couldn't find format id {}", inbound.format_id);
             APIError::NotFound(format!("format with ID {}", inbound.format_id))
         })?;
     HttpResponse::Created()
-        .json(FormatEntitlementMutation::create(&db.conn, inbound.into_inner()).await?)
+        .json(FormatEntitlementMutation::create(db, inbound.into_inner()).await?)
         .to_ok()
 }
 
@@ -49,15 +49,15 @@ async fn create_entitlement(
 async fn get_all_entitlements(
     pager: Query<APIPager>,
     filter: Query<ModelAsQuery>,
-    db: web::Data<AppState>,
     auth: ReqData<Model>,
 ) -> APIResult {
     pager.validate()?;
+    let db = DB_POOL.get().expect("database is not initialized");
     let auth = auth.into_inner();
     let filter = filter.into_inner();
     let pager = pager.into_inner().into();
     Ok(PaginatedResponse::from(
-        FormatEntitlementQuery::get_all_for_user(&db.conn, &filter, &pager, auth).await?,
+        FormatEntitlementQuery::get_all_for_user(db, &filter, &pager, auth).await?,
     )
     .into())
 }
@@ -65,19 +65,19 @@ async fn get_all_entitlements(
 #[delete("")]
 async fn delete_entitlement(
     inbound: Json<FormatEntitlementSearch>,
-    db: web::Data<AppState>,
     auth: ReqData<Model>,
 ) -> APIResult {
+    let db = DB_POOL.get().expect("database is not initialized");
     verify_admin(&auth)?;
     let inbound = inbound.into_inner();
     info!(
         "Preparing to delete format entitlement {:?} (requested by user ID {}).",
         inbound, auth.id
     );
-    FormatEntitlementQuery::find_by_id(&db.conn, &inbound)
+    FormatEntitlementQuery::find_by_id(db, &inbound)
         .await?
         .ok_or_else(|| APIError::NotFound("format entitlement".into()))?
-        .delete(&db.conn)
+        .delete(db)
         .await?;
     HttpResponse::NoContent().finish().to_ok()
 }

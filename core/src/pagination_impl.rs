@@ -1,10 +1,12 @@
 /// GAT-related features (generic associated types) for models.
 use crate::traits::*;
 use async_trait::async_trait;
-use futures::join;
+use futures::{join, Stream};
 use log::{debug, info};
 use sea_orm::*;
-use std::fmt::Debug;
+use std::{fmt::Debug, pin::Pin};
+
+type ResultModel<T> = Result<T, DbErr>;
 
 pub trait GetAllTrait<'db> {
     type ResultModel: FromQueryResult + Sized + Send + Sync + 'db;
@@ -24,16 +26,44 @@ pub struct PaginationOptions {
 
 #[async_trait]
 pub trait GetAllPaginated<'db>: GetAllTrait<'db> {
+    fn prepare_select(
+        filters: &Self::FilterQueryModel,
+        select_stmt: Option<sea_orm::Select<Self::Entity>>,
+    ) -> Select<Self::Entity> {
+        debug!("filter params: {:#?}", filters);
+        let mut select_stmt = select_stmt.unwrap_or_else(Self::Entity::find);
+        select_stmt = filters.filter(select_stmt);
+        select_stmt = filters.sort(select_stmt);
+        select_stmt
+    }
+
+    /// Get all available items as a stream.
+    ///
+    /// This will apply the query and return an unpaged stream of items.
+    /// Parameters:
+    ///
+    /// `db`: The database connection.
+    /// filtters: Filters to apply to the query.
+    /// select_stmt: Optional statement to use for the query.
+    async fn get_all_as_stream<C: ConnectionTrait + StreamTrait + 'db>(
+        db: &'db C,
+        filters: &Self::FilterQueryModel,
+        select_stmt: Option<sea_orm::Select<Self::Entity>>,
+    ) -> Result<Pin<Box<dyn Stream<Item = ResultModel<Self::ResultModel>> + Send + 'db>>, DbErr>
+    {
+        let select = Self::prepare_select(filters, select_stmt);
+        Ok(select.stream(db).await.map(Box::pin)?)
+    }
+
+    /// Get all available items using pagination.
     async fn get_all<C: ConnectionTrait>(
         db: &C,
         filters: &Self::FilterQueryModel,
         pagination_options: &PaginationOptions,
         select_stmt: Option<sea_orm::Select<Self::Entity>>,
     ) -> Result<(Vec<Self::ResultModel>, u64, u64), DbErr> {
-        let select_stmt = select_stmt.unwrap_or_else(Self::Entity::find);
         debug!("pagination options: {:#?}", pagination_options);
-        debug!("filter params: {:#?}", filters);
-        let select = filters.sort(filters.filter(select_stmt));
+        let select = Self::prepare_select(filters, select_stmt);
         let paginator = select.paginate(db, pagination_options.page_size);
         let pagination_fut = paginator.fetch_page(pagination_options.fetch_page);
         if pagination_options.items_and_pages {

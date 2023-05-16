@@ -1,3 +1,5 @@
+use std::pin::Pin;
+
 use crate::{
     pagination_impl::GetAllTrait, GetAllPaginated, PaginationOptions, PreparedSearchQuery,
 };
@@ -9,6 +11,7 @@ use ::entity::{
     record, upload_session, user,
     user::Entity as User,
 };
+use futures::Stream;
 use sea_orm::*;
 
 // Query objects
@@ -64,6 +67,23 @@ impl RecordQuery {
             .filter(extra_condition)
             .order_by_asc(record::Column::Id);
         RecordQuery::get_all(db, filters, pagination_options, Some(select))
+            .await
+            .map_err(DatabaseQueryError::from)
+    }
+
+    pub async fn filter_readable_records_stream<C: ConnectionTrait + StreamTrait + 'static>(
+        db: &'static C,
+        filters: &record::ModelAsQuery,
+        prepared_search: PreparedSearchQuery<'_>,
+    ) -> Result<
+        Pin<Box<dyn Stream<Item = Result<record::Model, sea_orm::DbErr>> + Send + 'static>>,
+        DatabaseQueryError,
+    > {
+        let extra_condition = prepared_search.build_condition()?;
+        let select = record::Entity::find()
+            .filter(extra_condition)
+            .order_by_asc(record::Column::Id);
+        RecordQuery::get_all_as_stream(db, filters, Some(select))
             .await
             .map_err(DatabaseQueryError::from)
     }

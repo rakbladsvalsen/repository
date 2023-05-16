@@ -15,7 +15,7 @@ pub mod util;
 
 use std::error::Error;
 
-use actix_web::{web, App, HttpServer};
+use actix_web::{App, HttpServer};
 use central_repository_dao::sea_orm::{ConnectOptions, Database};
 use conf::Config;
 use envconfig::Envconfig;
@@ -28,7 +28,7 @@ use record::init_record_routes;
 use user::init_user_routes;
 
 use crate::{
-    common::AppState,
+    conf::DB_POOL,
     core_middleware::logging::LogMiddleware,
     error::{json_error_handler, path_error_handler, query_error_handler},
     upload_session::init_upload_session_routes,
@@ -48,9 +48,6 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     config.verify()?;
 
     info!("Using config: {:#?}", config);
-
-    // establish connection to database and apply migrations
-    // -> create post table if not exists
     let mut opt = ConnectOptions::new(config.database_url);
     // configure thread pool
     opt.max_connections(config.db_pool_max_conn)
@@ -61,17 +58,17 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         info!("Database pool successfully created.");
         r
     })?;
+    // run pending migrations
     Migrator::up(&conn, None).await?;
-    // app shared state
-    let state = AppState { conn };
+    // initialize OnceCell with database
+    DB_POOL.set(conn).unwrap();
 
     HttpServer::new(move || {
         App::new()
+            .wrap(LogMiddleware)
             .app_data(json_error_handler())
             .app_data(query_error_handler())
             .app_data(path_error_handler())
-            .wrap(LogMiddleware)
-            .app_data(web::Data::new(state.clone()))
             .configure(init_format_routes)
             .configure(init_record_routes)
             .configure(init_user_routes)

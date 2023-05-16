@@ -176,7 +176,7 @@ pub struct SearchQuery {
     query: Vec<SearchGroup>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PreparedSearchQuery<'a> {
     available_read_formats: Vec<i32>,
     requested_search_columns: HashMap<&'a String, ColumnKind>,

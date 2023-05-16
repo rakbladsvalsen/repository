@@ -1,5 +1,5 @@
 use crate::{
-    common::AppState,
+    conf::DB_POOL,
     core_middleware::auth::AuthMiddleware,
     error::APIResult,
     pagination::{APIPager, PaginatedResponse},
@@ -23,14 +23,14 @@ pub struct LoginCredentials {
 async fn get_all_upload_sessions(
     pager: Query<APIPager>,
     filter: Query<ModelAsQuery>,
-    db: web::Data<AppState>,
     auth: ReqData<UserModel>,
 ) -> APIResult {
     pager.validate()?;
+    let db = DB_POOL.get().expect("database is not initialized");
     let auth = auth.into_inner();
     let filter = filter.into_inner();
     let pager = pager.into_inner().into();
-    let ul_sessions = UploadSessionQuery::get_all_for_user(&db.conn, &filter, &pager, auth).await?;
+    let ul_sessions = UploadSessionQuery::get_all_for_user(db, &filter, &pager, auth).await?;
     Ok(PaginatedResponse::from(ul_sessions).into())
 }
 

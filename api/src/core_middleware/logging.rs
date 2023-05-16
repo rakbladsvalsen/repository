@@ -1,7 +1,7 @@
 use actix_http::header::{HeaderName, HeaderValue};
 use lazy_static::lazy_static;
 use log::{error, info};
-use tracing::{debug_span, field};
+use tracing::{field, info_span};
 use uuid::Uuid;
 
 use crate::common::{create_middleware, handle_fatal};
@@ -23,7 +23,7 @@ create_middleware!(
         Box::pin(async move {
             let uuid = Uuid::new_v4().to_string();
             let method = req.method().to_string();
-            let span = debug_span!("central_repository", id=%uuid, path=%req.path(), query=%req.query_string(), method=%method, user=field::Empty, user_id=field::Empty, superuser=field::Empty).entered();
+            let span = info_span!("central_repository", id=%uuid, path=%req.path(), query=%req.query_string(), method=%method, user=field::Empty, user_id=field::Empty, superuser=field::Empty).entered();
             // Insert span into request. This span will live until the request
             // extensions get dropped.
             req.extensions_mut().insert(span);

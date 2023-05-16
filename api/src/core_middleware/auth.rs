@@ -1,14 +1,9 @@
 use actix_http::header;
-use actix_web::web;
 use lazy_static::lazy_static;
 use log::{debug, info};
 use tracing::span::EnteredSpan;
 
-use crate::{
-    auth::jwt::Token,
-    common::{create_middleware, AppState},
-    error::APIError,
-};
+use crate::{auth::jwt::Token, common::create_middleware, conf::DB_POOL, error::APIError};
 
 lazy_static! {
     static ref BEARER: &'static str = "Bearer ";
@@ -19,9 +14,8 @@ create_middleware!(
     AuthMiddlewareInner,
     fn call(&self, req: ServiceRequest) -> Self::Future {
         let svc = self.service.clone();
-        let app_state = req.app_data::<web::Data<AppState>>().unwrap();
-        // just clone the db reference, not the whole app state
-        let db = app_state.conn.clone();
+        let db = DB_POOL.get().expect("database is not initialized");
+
         let token = req
             .headers()
             .get(header::AUTHORIZATION)
@@ -51,7 +45,7 @@ create_middleware!(
             let token = Token::from(token);
 
             // handle token validation
-            let user = token.validate(&db).await;
+            let user = token.validate(db).await;
             if let Err(err) = user {
                 return Ok(req.error_response(err).into());
             }

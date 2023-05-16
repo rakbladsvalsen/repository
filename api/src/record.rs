@@ -1,6 +1,6 @@
 use crate::{
-    common::{timed, AppState, DebugMode},
-    conf::BULK_INSERT_CHUNK_SIZE,
+    common::{timed, DebugMode},
+    conf::{BULK_INSERT_CHUNK_SIZE, DB_POOL},
     core_middleware::auth::AuthMiddleware,
     error::{APIError, APIResult, AsAPIResult},
     pagination::{APIPager, PaginatedResponse},
@@ -13,19 +13,45 @@ use central_repository_dao::{
 
 use actix_web::{
     get, post,
-    web::{self, Data, Json, Query, ReqData},
+    web::{self, Json, Query, ReqData},
     HttpResponse,
 };
 use entity::record::Model as RecordModel;
 use entity::upload_session::Model as UploadSessionModel;
-use futures::future::join_all;
+use futures::{future::join_all, TryStreamExt};
 use log::{debug, error, info};
 use rayon::{prelude::*, slice::ParallelSlice};
 
 #[get("/filter")]
 async fn get_all_filtered_records(
-    db: web::Data<AppState>,
     pager: Query<APIPager>,
+    filter: Query<ModelAsQuery>,
+    auth: ReqData<UserModel>,
+    query: Json<SearchQuery>,
+    debug: actix_web::web::Query<DebugMode>,
+) -> APIResult {
+    query.validate()?;
+    let db = DB_POOL.get().expect("database is not initialized");
+    // get this query's inner contents
+    let query = query.into_inner();
+    let filter = filter.into_inner();
+    pager.validate()?;
+    let prepared_search = query.get_readable_formats_for_user(&auth, db).await?;
+    let pager = pager.into_inner().into();
+    info!("record query: {query:#?}");
+    if **debug {
+        // if "?debug=true" is passed, return the full dict query
+        info!("accessed debugging interface");
+        return HttpResponse::Ok().json(query).to_ok();
+    }
+    // create extra filtering condition to search inside ALL JSONB hashmaps
+    let records =
+        RecordQuery::filter_readable_records(db, &filter, &pager, prepared_search).await?;
+    Ok(PaginatedResponse::from(records).into())
+}
+
+#[get("/filter-stream")]
+async fn get_all_filtered_records_stream(
     filter: Query<ModelAsQuery>,
     auth: ReqData<UserModel>,
     query: Json<SearchQuery>,
@@ -35,39 +61,39 @@ async fn get_all_filtered_records(
     // get this query's inner contents
     let query = query.into_inner();
     let filter = filter.into_inner();
-    pager.validate()?;
-    let prepared_search = query.get_readable_formats_for_user(&auth, &db.conn).await?;
-    let pager = pager.into_inner().into();
+    let db = DB_POOL.get().expect("database is not initialized");
+    let prepared_search = query.get_readable_formats_for_user(&auth, db).await?;
     info!("record query: {query:#?}");
     if **debug {
-        // if "?debug=true" is passed, return the full dict query
         info!("accessed debugging interface");
         return HttpResponse::Ok().json(query).to_ok();
     }
-    // create extra filtering condition to search inside ALL JSONB hashmaps
-    // let extra_condition = prepared_search.build_condition()?;
-    let records =
-        RecordQuery::filter_readable_records(&db.conn, &filter, &pager, prepared_search).await?;
-    Ok(PaginatedResponse::from(records).into())
+
+    let iterator =
+        RecordQuery::filter_readable_records_stream(db, &filter, prepared_search.clone()).await?;
+
+    let stream = iterator.map_ok(|it| {
+        let mut json = serde_json::to_string(&it.data.0).unwrap_or_else(|_| "".to_string());
+        json.push('\n');
+        web::Bytes::from(json)
+    });
+
+    HttpResponse::Ok().streaming(stream).to_ok()
 }
 
 #[post("")]
-async fn create_record(
-    inbound: Json<InboundRecordData>,
-    db: Data<AppState>,
-    auth: ReqData<UserModel>,
-) -> APIResult {
+async fn create_record(inbound: Json<InboundRecordData>, auth: ReqData<UserModel>) -> APIResult {
+    let db = DB_POOL.get().expect("database is not initialized");
     let auth = auth.into_inner();
     let request_item_length = inbound.data.len() as i32;
     let inbound = inbound.into_inner();
-
     let format = match auth.is_superuser {
         // bypass format check for superusers
-        true => FormatQuery::find_by_id(&db.conn, inbound.format_id)
+        true => FormatQuery::find_by_id(db, inbound.format_id)
             .await?
             .ok_or_else(|| APIError::NotFound(format!("format with ID {}", inbound.format_id)))?,
         // for normal users, check if they can write to this format
-        false => UserQuery::find_writable_format(&db.conn, &auth, inbound.format_id)
+        false => UserQuery::find_writable_format(db, &auth, inbound.format_id)
             .await?
             .ok_or_else(|| {
                 info!(
@@ -112,7 +138,7 @@ async fn create_record(
         detail: outcome_detail.1,
         ..Default::default()
     };
-    let upload_session = UploadSessionMutation::create(&db.conn, upload_session).await?;
+    let upload_session = UploadSessionMutation::create(db, upload_session).await?;
 
     let saved_entries = match payload_validation {
         Ok(inbound) => {
@@ -125,7 +151,7 @@ async fn create_record(
             let insert_tasks = entries
                 .par_chunks(*BULK_INSERT_CHUNK_SIZE)
                 .into_par_iter()
-                .map(|chunk| RecordMutation::create_many(&db.conn, chunk.to_owned()))
+                .map(|chunk| RecordMutation::create_many(db, chunk.to_owned()))
                 .collect::<Vec<_>>();
             debug!(
                 "Preparing {request_entries} entries/{} chunks = {} insert jobs.",
@@ -154,7 +180,7 @@ async fn create_record(
         Err(err) => {
             error!("Rolling back success status to error (caused by: {err:?})");
             UploadSessionMutation::update_as_failed(
-                &db.conn,
+                db,
                 upload_session.id,
                 format!("{:?}, {:?}", err, err.to_string()),
             )
@@ -169,7 +195,8 @@ pub fn init_record_routes(cfg: &mut web::ServiceConfig) {
         .wrap(AuthMiddleware)
         // .service(get_all_records)
         .service(create_record)
-        .service(get_all_filtered_records);
+        .service(get_all_filtered_records)
+        .service(get_all_filtered_records_stream);
 
     cfg.service(scope);
 }

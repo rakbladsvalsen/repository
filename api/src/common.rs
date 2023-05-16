@@ -1,13 +1,8 @@
 use std::{cell::RefCell, rc::Rc};
 
-use central_repository_dao::{sea_orm::DatabaseConnection, Deserialize, Serialize};
+use central_repository_dao::{Deserialize, Serialize};
 
 pub type RcRefCell<T> = Rc<RefCell<T>>;
-
-#[derive(Clone, Debug)]
-pub struct AppState {
-    pub conn: DatabaseConnection,
-}
 
 #[derive(Default, Serialize, Deserialize)]
 pub struct DebugMode {
