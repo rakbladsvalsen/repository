@@ -347,9 +347,16 @@ impl PreparedSearchQuery<'_> {
             };
             // iterate over all expressions inside this group
             for expression in search_group.args.iter() {
-                // use weird postgres operator to access JSONB keys (i.e. data->>someField)
-                let mut target_json_column = Expr::col(record::Column::Data)
-                    .binary(PgBinOper::CastJsonField, Expr::val(&expression.column));
+                // TODO: Change this to PgBinOper once it gets stabilized
+                // let mut target_json_column = Expr::col(record::Column::Data)
+                //     .binary(PgBinOper::CastJsonField, Expr::val(&expression.column));
+                let mut target_json_column = Expr::cust_with_exprs(
+                    "$1 ->> $2",
+                    [
+                        Expr::col(record::Column::Data).into(),
+                        Expr::val(&expression.column).into(),
+                    ],
+                );
 
                 // Get the database type for this column.
                 let against_column_kind = self
