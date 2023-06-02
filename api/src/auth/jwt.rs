@@ -37,7 +37,7 @@ pub struct TokenResponse {
 
 impl Token {
     pub fn build(user: UserModel) -> Result<TokenResponse, APIError> {
-        let claims = Claims::new(user.id);
+        let claims = Claims::new(user.id, &user.username);
         let token = encode(&JWT_HEADER, &claims, &ENCODING_KEY).map_err(|err| {
             // crypto/memory error
             handle_fatal!("token creation", err, APIError::ServerError)
@@ -82,6 +82,8 @@ impl From<TokenResponse> for HttpResponse {
 pub struct Claims {
     // subject - user id
     sub: i32,
+    // subject - username (user)
+    user: String,
     // issued_at
     iat: usize,
     // expires_at
@@ -89,10 +91,11 @@ pub struct Claims {
 }
 
 impl Claims {
-    pub fn new(sub: i32) -> Self {
+    pub fn new(sub: i32, user: &str) -> Self {
         let now = Utc::now();
         Claims {
             sub,
+            user: user.to_owned(),
             iat: now.timestamp() as usize,
             exp: (now + Duration::seconds(CONFIG.token_expiration_seconds.into())).timestamp()
                 as usize,

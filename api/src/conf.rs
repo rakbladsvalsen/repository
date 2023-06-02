@@ -33,7 +33,12 @@ fn get_coding_keys(key: &String) -> Result<(EncodingKey, DecodingKey), Box<dyn E
     let key = Ed25519KeyPair::from_pkcs8_maybe_unchecked(&decoded)?;
     let encoding_key = EncodingKey::from_ed_der(&decoded);
     let decoding_key = DecodingKey::from_ed_der(key.public_key().as_ref());
-    info!("Loaded Ed25519 key.");
+    info!(
+        "Loaded Ed25519 keys, public part is: {:?}. \
+Please confirm the public part matches the private key with '\
+cat <PRIV_KEY>.pem | openssl pkey -noout -text'",
+        key.public_key()
+    );
     Ok((encoding_key, decoding_key))
 }
 
