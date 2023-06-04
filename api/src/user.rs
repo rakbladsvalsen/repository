@@ -123,10 +123,9 @@ async fn delete_user(id: Path<i32>, auth: ReqData<UserModel>) -> APIResult {
     HttpResponse::NoContent().finish().to_ok()
 }
 
-#[post("/token/validate")]
-async fn validate_token(token: Json<Token>) -> APIResult {
-    let db = DB_POOL.get().expect("database is not initialized");
-    let user = token.into_inner().validate(db).await?;
+#[get("/self")]
+async fn get_self(auth: ReqData<UserModel>) -> APIResult {
+    let user = auth.into_inner();
     HttpResponse::Ok().json(user).to_ok()
 }
 
@@ -167,12 +166,12 @@ pub fn init_user_routes(cfg: &mut web::ServiceConfig) {
     let health_scope = web::scope("/healthcheck").service(healthcheck);
     let user_scope = web::scope("/user")
         .wrap(AuthMiddleware)
+        .service(get_self)
         .service(get_all_users)
         .service(create_user)
         .service(delete_user)
         .service(update_user)
-        .service(get_user)
-        .service(validate_token);
+        .service(get_user);
     cfg.service(health_scope);
     cfg.service(login_scope);
     cfg.service(user_scope);

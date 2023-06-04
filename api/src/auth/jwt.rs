@@ -54,7 +54,7 @@ impl Token {
                 APIError::InvalidToken
             })?;
         // make sure this user exists
-        UserQuery::find_by_id(db, token_data.claims.sub)
+        let user = UserQuery::find_by_id(db, token_data.claims.sub)
             .await?
             .ok_or_else(|| {
                 warn!(
@@ -62,7 +62,15 @@ impl Token {
                     token_data.claims.sub
                 );
                 APIError::InvalidToken
-            })
+            })?;
+        if !user.active {
+            info!(
+                "Received a valid token but user (id: {}) is disabled.",
+                user.id
+            );
+            return Err(APIError::InactiveUser);
+        }
+        Ok(user)
     }
 }
 
