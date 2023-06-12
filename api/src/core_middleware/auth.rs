@@ -59,11 +59,11 @@ create_middleware!(
                     .get::<EnteredSpan>()
                     .expect("Logging middleware must run before auth middleware!");
                 span.record("user", &user.username);
-                span.record("user_id", user.id);
+                span.record("user_id", user.id.to_string());
                 span.record("superuser", user.is_superuser);
             }
             info!(
-                "Authenticated token for user id: {:?}, username: {:?}.",
+                "Authenticated token for user id: {}, username: {:?}.",
                 user.id, user.username
             );
             req.extensions_mut().insert(user);

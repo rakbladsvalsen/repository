@@ -9,6 +9,7 @@ use ::entity::{
 };
 use regex::Regex;
 use sea_orm::*;
+use uuid::Uuid;
 
 pub struct FormatMutation;
 
@@ -101,7 +102,7 @@ pub struct UserMutation;
 impl UserMutation {
     pub async fn create(db: &DbConn, user: user::Model) -> Result<user::Model, DbErr> {
         let mut user = user::ActiveModel::from(user);
-        user.id = NotSet;
+        user.id = Set(Uuid::new_v4());
         user.insert(db).await
     }
 

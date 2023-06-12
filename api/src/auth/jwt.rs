@@ -11,6 +11,7 @@ use log::{error, info, warn};
 
 use serde::{Deserialize, Serialize};
 use sqlx::types::chrono::Utc;
+use uuid::Uuid;
 
 use crate::error::APIError;
 
@@ -89,7 +90,7 @@ impl From<TokenResponse> for HttpResponse {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Claims {
     // subject - user id
-    sub: i32,
+    sub: Uuid,
     // subject - username (user)
     user: String,
     // subject - superuser-ness

@@ -12,11 +12,7 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(FormatEntitlement::Table)
                     .if_not_exists()
-                    .col(
-                        ColumnDef::new(FormatEntitlement::UserId)
-                            .integer()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(FormatEntitlement::UserId).uuid().not_null())
                     .foreign_key(
                         ForeignKey::create()
                             // create foreign key from this record...

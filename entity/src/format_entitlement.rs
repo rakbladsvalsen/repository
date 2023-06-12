@@ -49,7 +49,7 @@ pub struct Model {
         gte,
         custom_convert = "*value"
     )]
-    pub user_id: i32,
+    pub user_id: Uuid,
     #[as_query(
         column = "Column::FormatId",
         eq,
@@ -79,7 +79,7 @@ pub struct Model {
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchModel {
-    pub user_id: i32,
+    pub user_id: Uuid,
     pub format_id: i32,
 }
 

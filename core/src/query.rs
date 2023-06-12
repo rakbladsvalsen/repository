@@ -96,15 +96,16 @@ impl FormatQuery {
 }
 
 impl UserQuery {
-    pub async fn find_by_id(db: &DbConn, id: i32) -> Result<Option<user::Model>, DbErr> {
-        User::find_by_id(id).one(db).await
+    pub async fn find_by_id(db: &DbConn, id: uuid::Uuid) -> Result<Option<user::Model>, DbErr> {
+        User::find().filter(user::Column::Id.eq(id)).one(db).await
     }
 
     pub async fn find_nonsuperuser_by_id(
         db: &DbConn,
-        id: i32,
+        id: uuid::Uuid,
     ) -> Result<Option<user::Model>, DbErr> {
-        User::find_by_id(id)
+        User::find()
+            .filter(user::Column::Id.eq(id))
             .filter(user::Column::IsSuperuser.eq(false))
             .one(db)
             .await

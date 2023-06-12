@@ -6,6 +6,7 @@ use sea_orm::entity::prelude::*;
 use sea_orm::sea_query::extension::postgres::PgBinOper;
 use sea_orm::sea_query::Expr;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 #[derive(
     Default, Clone, Debug, PartialEq, Eq, DeriveEntityModel, Deserialize, Serialize, AsQueryParam,
@@ -14,11 +15,11 @@ use serde::{Deserialize, Serialize};
 #[sea_orm(table_name = "user")]
 #[serde(rename_all = "camelCase")]
 pub struct Model {
-    #[sea_orm(primary_key)]
     // Don't let users define this field.
     #[as_query(column = "Column::Id", eq, lt, gt, lte, gte, custom_convert = "*value")]
     #[serde(skip_deserializing)]
-    pub id: i32,
+    #[sea_orm(primary_key)]
+    pub id: Uuid,
     #[as_query(column = "Column::Username", eq, like, ilike, contains)]
     pub username: String,
     #[serde(skip_serializing)]

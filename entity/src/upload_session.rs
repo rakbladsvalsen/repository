@@ -74,7 +74,7 @@ pub struct Model {
         gte,
         custom_convert = "*value"
     )]
-    pub user_id: i32,
+    pub user_id: Uuid,
     #[as_query(
         column = "Column::Outcome",
         eq,

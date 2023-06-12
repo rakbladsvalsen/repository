@@ -21,6 +21,7 @@ use central_repository_dao::{
 use log::info;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use uuid::Uuid;
 
 #[derive(Serialize, Deserialize)]
 pub struct LoginCredentials {
@@ -84,7 +85,7 @@ async fn login(inbound: Json<LoginCredentials>) -> APIResult {
 }
 
 #[get("{id}")]
-async fn get_user(id: Path<i32>, auth: ReqData<UserModel>) -> APIResult {
+async fn get_user(id: Path<Uuid>, auth: ReqData<UserModel>) -> APIResult {
     let db = DB_POOL.get().expect("database is not initialized");
     let id = id.into_inner();
     if !auth.is_superuser && auth.id != id {
@@ -98,7 +99,7 @@ async fn get_user(id: Path<i32>, auth: ReqData<UserModel>) -> APIResult {
 }
 
 #[delete("{id}")]
-async fn delete_user(id: Path<i32>, auth: ReqData<UserModel>) -> APIResult {
+async fn delete_user(id: Path<Uuid>, auth: ReqData<UserModel>) -> APIResult {
     verify_admin(&auth)?;
     let db = DB_POOL.get().expect("database is not initialized");
     let id = id.into_inner();
@@ -110,7 +111,7 @@ async fn delete_user(id: Path<i32>, auth: ReqData<UserModel>) -> APIResult {
         .ok_or_else(|| APIError::NotFound(format!("user with ID {id}")))?;
     if *PROTECT_SUPERUSER && user.is_superuser {
         info!(
-            "Prevented user deletion: user ID {} tried to delete a superuser (ID: {})",
+            "Prevented user deletionx: user ID {} tried to delete a superuser (ID: {})",
             auth.id, id
         );
         return APIError::ConflictingOperation("can't delete a superuser".into()).into();
@@ -131,7 +132,7 @@ async fn get_self(auth: ReqData<UserModel>) -> APIResult {
 
 #[patch("{id}")]
 async fn update_user(
-    id: Path<i32>,
+    id: Path<Uuid>,
     user: Json<UpdatableModel>,
     auth: ReqData<UserModel>,
 ) -> APIResult {

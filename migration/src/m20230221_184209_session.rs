@@ -29,7 +29,7 @@ impl MigrationTrait for Migration {
                             .timestamp_with_time_zone()
                             .not_null(),
                     )
-                    .col(ColumnDef::new(UploadSession::UserId).integer().not_null())
+                    .col(ColumnDef::new(UploadSession::UserId).uuid().not_null())
                     .foreign_key(
                         ForeignKey::create()
                             // create foreign key from this record...
