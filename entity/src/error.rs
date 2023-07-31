@@ -1,6 +1,7 @@
 use std::fmt::Debug;
 
-use sea_orm::{strum::AsRefStr, DbErr};
+use sea_orm::DbErr;
+use strum::AsRefStr;
 use thiserror::Error;
 
 #[derive(Error, Debug, AsRefStr)]

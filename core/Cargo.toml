@@ -6,11 +6,11 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+sea-orm = { version = "0.12.1", features = ["sqlx-postgres", "runtime-tokio-native-tls"] }
 chrono = "0.4.23"
 entity = { path = "../entity" }
 log = "0.4.17"
 async-trait = "0.1.68"
-sea-orm = "0.11.3"
 serde = { version = "1.0.160", features = ["derive"] }
 serde_json = "1.0.95"
 rayon = "1.7.0"

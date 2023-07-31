@@ -347,16 +347,8 @@ impl PreparedSearchQuery<'_> {
             };
             // iterate over all expressions inside this group
             for expression in search_group.args.iter() {
-                // TODO: Change this to PgBinOper once it gets stabilized
-                // let mut target_json_column = Expr::col(record::Column::Data)
-                //     .binary(PgBinOper::CastJsonField, Expr::val(&expression.column));
-                let mut target_json_column = Expr::cust_with_exprs(
-                    "$1 ->> $2",
-                    [
-                        Expr::col(record::Column::Data).into(),
-                        Expr::val(&expression.column).into(),
-                    ],
-                );
+                let mut target_json_column = Expr::col(record::Column::Data)
+                    .binary(PgBinOper::CastJsonField, Expr::val(&expression.column));
 
                 // Get the database type for this column.
                 let against_column_kind = self
@@ -394,20 +386,11 @@ impl PreparedSearchQuery<'_> {
                             }
                         }
                     }
-                    ComparisonOperator::Regex => Expr::cust_with_exprs(
-                        // use weird postgres regex operator (case sensitive)
-                        "$1 ~ $2",
-                        [
-                            target_json_column,
-                            expression.compare_against.as_str().into(),
-                        ],
-                    ),
-                    ComparisonOperator::RegexCaseInsensitive => Expr::cust_with_exprs(
-                        "$1 ~* $2",
-                        [
-                            target_json_column,
-                            expression.compare_against.as_str().into(),
-                        ],
+                    ComparisonOperator::Regex => target_json_column
+                        .binary(PgBinOper::Regex, expression.compare_against.as_str()),
+                    ComparisonOperator::RegexCaseInsensitive => target_json_column.binary(
+                        PgBinOper::RegexCaseInsensitive,
+                        expression.compare_against.as_str(),
                     ),
                     ComparisonOperator::ILike => target_json_column
                         .binary(PgBinOper::ILike, expression.compare_against.as_str()),

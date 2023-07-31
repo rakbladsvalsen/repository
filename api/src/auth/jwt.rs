@@ -4,13 +4,12 @@ use crate::{
 };
 use actix_web::HttpResponse;
 use central_repository_dao::{sea_orm::DbConn, user::Model as UserModel, UserQuery};
-use chrono::Duration;
+use chrono::{Duration, Utc};
 use jsonwebtoken::{decode, encode, Algorithm, Header, Validation};
 use lazy_static::lazy_static;
 use log::{error, info, warn};
 
 use serde::{Deserialize, Serialize};
-use sqlx::types::chrono::Utc;
 use uuid::Uuid;
 
 use crate::error::APIError;

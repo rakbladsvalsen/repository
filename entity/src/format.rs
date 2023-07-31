@@ -3,8 +3,8 @@ use std::ops::Deref;
 use crate::traits::{AsQueryParamFilterable, AsQueryParamSortable};
 use central_repository_macros::AsQueryParam;
 use chrono::{DateTime, Utc};
-use sea_orm::entity::prelude::*;
 use sea_orm::Select;
+use sea_orm::{entity::prelude::*, FromJsonQueryResult};
 use serde::{Deserialize, Serialize};
 use std::hash::Hash;
 
