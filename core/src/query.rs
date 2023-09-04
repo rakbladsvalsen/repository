@@ -60,7 +60,7 @@ impl RecordQuery {
         db: &C,
         filters: &record::ModelAsQuery,
         pagination_options: &PaginationOptions,
-        prepared_search: PreparedSearchQuery<'_>,
+        prepared_search: PreparedSearchQuery,
     ) -> Result<(Vec<record::Model>, u64, u64), DatabaseQueryError> {
         let extra_condition = prepared_search.build_condition()?;
         let select = record::Entity::find()
@@ -74,7 +74,7 @@ impl RecordQuery {
     pub async fn filter_readable_records_stream<C: ConnectionTrait + StreamTrait + 'static>(
         db: &'static C,
         filters: &record::ModelAsQuery,
-        prepared_search: PreparedSearchQuery<'_>,
+        prepared_search: PreparedSearchQuery,
     ) -> Result<
         Pin<Box<dyn Stream<Item = Result<record::Model, sea_orm::DbErr>> + Send + 'static>>,
         DatabaseQueryError,

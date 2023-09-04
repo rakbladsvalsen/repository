@@ -12,10 +12,7 @@ pub enum DatabaseQueryError {
     InvalidUsage(String),
     #[error("Couldn't cast value to expected type")]
     CastError,
-    #[error(
-        "One or more formats have different types for column(s): '{0}' \
-(only the first 5 columns are being shown)"
-    )]
+    #[error("One or more formats have different types for column: '{0}'")]
     ColumnWithMixedTypesError(String),
     #[error("Empty query")]
     EmptyQuery,

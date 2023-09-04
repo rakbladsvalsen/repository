@@ -3,7 +3,7 @@ use central_repository_macros::AsQueryParam;
 use sea_orm::{entity::prelude::*, FromJsonQueryResult};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::Deref};
 
 /// Document type used throughout the entire project.
 /// Note that the JSON value can be any JSON object, though
@@ -13,6 +13,14 @@ pub type DynamicHashmap = HashMap<String, Value>;
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, FromJsonQueryResult)]
 pub struct RecordJsonData(pub DynamicHashmap);
+
+impl Deref for RecordJsonData {
+    type Target = DynamicHashmap;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 #[derive(
     AsQueryParam, Clone, Debug, PartialEq, Eq, DeriveEntityModel, Deserialize, Serialize, Default,

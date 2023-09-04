@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Optional
 from datetime import datetime
-from pydantic import BaseModel, PrivateAttr, Field
+from pydantic import BaseModel, PrivateAttr, Field, UUID4
 from httpx import AsyncClient
 
 from repoclient.models.handler import RequestModel
@@ -11,7 +11,7 @@ from repoclient.models.handler import RequestModel
 class User(RequestModel):
     username: str
     password: Optional[str]
-    id: Optional[int] = None
+    id: Optional[str] = None
     created_at: Optional[datetime] = Field(None, alias="createdAt")
     is_superuser: Optional[bool] = Field(False, alias="isSuperuser")
     active: Optional[bool] = None
@@ -32,8 +32,9 @@ class User(RequestModel):
         response = await client.post("/login", json=self.dict())
         if response.status_code != 200:
             self.handle_exception(response)
-        ret: User = User.parse_obj(response.json()["user"])
-        ret.token = response.json()["token"]
+        json = response.json()
+        ret: User = User.parse_obj(json["user"])
+        ret.token = json["token"]
         ret._checked = True
         return ret
 

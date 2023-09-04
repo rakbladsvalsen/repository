@@ -231,7 +231,7 @@ fn expand(ast: DeriveInput) -> syn::Result<TokenStream2> {
         #[allow(dead_code)]
         use sea_orm::QueryOrder;
 
-        #[derive(Debug, serde::Deserialize, serde::Serialize, Default)]
+        #[derive(Debug, serde::Deserialize, serde::Serialize, Default, std::clone::Clone)]
         #[serde(rename_all = "camelCase")]
         pub struct #bident {
             order_by: std::option::Option<String>,

@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Optional, Iterator
 from datetime import datetime
 
-from pydantic import Field
+from pydantic import Field, UUID4
 from enum import Enum
 from httpx import AsyncClient
 import logging
@@ -41,7 +41,7 @@ class FormatEntitlementQuery(UserFormatFilter):
 
 
 class FormatEntitlement(RequestModel):
-    user_id: int = Field(alias="userId")
+    user_id: str = Field(alias="userId")
     format_id: int = Field(alias="formatId")
     access: Optional[EntitlementAccessLevel] = None
     created_at: Optional[datetime] = Field(None, alias="createdAt")

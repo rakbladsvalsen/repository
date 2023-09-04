@@ -1,6 +1,6 @@
 from __future__ import annotations
 from httpx import AsyncClient
-from pydantic import Field, BaseModel
+from pydantic import Field, BaseModel, UUID4
 from typing import Optional, Literal, Iterator
 from datetime import datetime
 
@@ -44,7 +44,7 @@ class UploadSession(BaseModel):
     created_at: datetime = Field(alias="createdAt")
     record_count: int = Field(alias="recordCount")
     format_id: int = Field(alias="formatId")
-    user_id: int = Field(alias="userId")
+    user_id: UUID4 = Field(alias="userId")
     outcome: str
     detail: str
 

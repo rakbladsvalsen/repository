@@ -34,16 +34,16 @@ async fn get_all_filtered_records(
     let db = DB_POOL.get().expect("database is not initialized");
     // get this query's inner contents
     let query = query.into_inner();
+    info!("query: {:#?}", query);
     let filter = filter.into_inner();
     pager.validate()?;
-    let prepared_search = query.get_readable_formats_for_user(&auth, db).await?;
     let pager = pager.into_inner().into();
-    info!("record query: {query:#?}");
     if **debug {
         // if "?debug=true" is passed, return the full dict query
         info!("accessed debugging interface");
         return HttpResponse::Ok().json(query).to_ok();
     }
+    let prepared_search = query.get_readable_formats_for_user(&auth, db).await?;
     // create extra filtering condition to search inside ALL JSONB hashmaps
     let records =
         RecordQuery::filter_readable_records(db, &filter, &pager, prepared_search).await?;
@@ -62,23 +62,49 @@ async fn get_all_filtered_records_stream(
     let query = query.into_inner();
     let filter = filter.into_inner();
     let db = DB_POOL.get().expect("database is not initialized");
-    let prepared_search = query.get_readable_formats_for_user(&auth, db).await?;
-    info!("record query: {query:#?}");
     if **debug {
         info!("accessed debugging interface");
         return HttpResponse::Ok().json(query).to_ok();
     }
+    let prepared_search = query.get_readable_formats_for_user(&auth, db).await?;
+    let schema_columns = prepared_search.schema_columns();
+    let mut is_header = true;
 
     let iterator =
-        RecordQuery::filter_readable_records_stream(db, &filter, prepared_search.clone()).await?;
+        RecordQuery::filter_readable_records_stream(db, &filter, prepared_search).await?;
 
-    let stream = iterator.map_ok(|it| {
-        let mut json = serde_json::to_string(&it.data.0).unwrap_or_else(|_| "".to_string());
-        json.push('\n');
-        web::Bytes::from(json)
+    let stream = iterator.map_ok(move |it: RecordModel| {
+        let mut buffer = String::new();
+        if is_header {
+            // insert header if this is the first iteration
+            buffer.push_str(
+                schema_columns
+                    .iter()
+                    .map(|col| format!("{:?}", col))
+                    .collect::<Vec<_>>()
+                    .join(",")
+                    .as_str(),
+            );
+            buffer.push('\n');
+            is_header = false;
+        }
+        // create csv data
+        for column in &schema_columns {
+            let column_data = it
+                .data
+                .get(column)
+                .map_or_else(|| ",".to_string(), |value| format!("{},", value));
+            buffer.push_str(&column_data);
+        }
+
+        buffer.push('\n');
+        web::Bytes::from(buffer)
     });
 
-    HttpResponse::Ok().streaming(stream).to_ok()
+    HttpResponse::Ok()
+        .append_header(("Content-Type", "text/csv"))
+        .streaming(stream)
+        .to_ok()
 }
 
 #[post("")]
