@@ -1,30 +1,72 @@
 name: Publish artifacts
 
 on:
-  release:
-    types: [created]
+  push:
+    tags:
+      - "*.*.*"
 
 jobs:
-  release:
-    name: release ${{ matrix.target }} (with non-required env)
-    runs-on: ubuntu-latest
+  publish:
+    name: Publish for ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: false
       matrix:
         include:
-          - target: x86_64-pc-windows-gnu
-            archive: zip
-          - target: x86_64-unknown-linux-musl
-            archive: tar.gz
-          - target: x86_64-apple-darwin
-            archive: zip
+          - os: ubuntu-latest
+            artifact_name: central-repository
+            release_name: central-repository-linux-amd64
+            target: x86_64-unknown-linux-musl
+            args: --best --lzma -9
+            strip: true
+          - os: windows-latest
+            artifact_name: central-repository.exe
+            release_name: central-repository-windows-amd64.exe
+            target: x86_64-pc-windows-msvc
+            args: --best --lzma -9
+            strip: true
+          - os: macos-latest
+            artifact_name: central-repository
+            release_name: central-repository-macos-amd64
+            target: x86_64-apple-darwin
+            args: --best --lzma -9
+            strip: true
+          - os: ubuntu-latest
+            artifact_name: central-repository
+            release_name: central-repository-linux-arm64
+            target: aarch64-unknown-linux-musl
+            args: --best --lzma -9
+            strip: false
+          - os: macos-latest
+            artifact_name: central-repository
+            release_name: central-repository-macos-arm64
+            target: aarch64-apple-darwin
+            args: --best --lzma -9
+            strip: true
+
     steps:
-      - uses: actions/checkout@master
-      - name: Compile and release
-        uses: rust-build/rust-build.action@master
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/checkout@v1
+      - name: Install rust
+        uses: actions-rs/toolchain@v1
         with:
-          RUSTTARGET: ${{ matrix.target }}
-          ARCHIVE_TYPES: ${{ matrix.archive }}
-          MINIFY: "yes"
+          toolchain: stable
+          profile: minimal
+          override: true
+          target: ${{ matrix.target }}
+      - name: Build target
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: true
+          command: build
+          args: --release --target ${{ matrix.target }}
+      - uses: svenstaro/upx-action@v2
+        with:
+          file: target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
+          strip: ${{ matrix.strip }}
+          args: ${{ matrix.args }}
+      - name: Upload binaries to release
+        uses: svenstaro/upload-release-action@v1-release
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
+          asset_name: ${{ matrix.release_name }}
+          tag: ${{ github.ref }}
