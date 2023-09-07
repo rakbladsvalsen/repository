@@ -25,7 +25,10 @@ async fn get_all_format(pager: Query<APIPager>, filter: Query<ModelAsQuery>) -> 
     pager.validate()?;
     let filter = filter.into_inner();
     let pager = pager.into_inner().into();
-    Ok(PaginatedResponse::from(FormatQuery::get_all(db, &filter, &pager, None).await?).into())
+    Ok(PaginatedResponse::from(
+        FormatQuery::get_all(db, &filter, &pager, None, entity::format::Column::CreatedAt).await?,
+    )
+    .into())
 }
 
 #[get("{id}")]

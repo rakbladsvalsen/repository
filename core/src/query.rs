@@ -63,12 +63,16 @@ impl RecordQuery {
         prepared_search: PreparedSearchQuery,
     ) -> Result<(Vec<record::Model>, u64, u64), DatabaseQueryError> {
         let extra_condition = prepared_search.build_condition()?;
-        let select = record::Entity::find()
-            .filter(extra_condition)
-            .order_by_asc(record::Column::Id);
-        RecordQuery::get_all(db, filters, pagination_options, Some(select))
-            .await
-            .map_err(DatabaseQueryError::from)
+        let select = record::Entity::find().filter(extra_condition);
+        RecordQuery::get_all(
+            db,
+            filters,
+            pagination_options,
+            Some(select),
+            record::Column::Id,
+        )
+        .await
+        .map_err(DatabaseQueryError::from)
     }
 
     pub async fn filter_readable_records_stream<C: ConnectionTrait + StreamTrait + 'static>(
@@ -157,12 +161,18 @@ impl FormatEntitlementQuery {
         pagination_options: &PaginationOptions,
         user: user::Model,
     ) -> Result<(Vec<format_entitlement::Model>, u64, u64), DbErr> {
-        let mut select_stmt =
-            format_entitlement::Entity::find().order_by_asc(format_entitlement::Column::CreatedAt);
+        let mut select_stmt = format_entitlement::Entity::find();
         if !user.is_superuser {
             select_stmt = select_stmt.filter(format_entitlement::Column::UserId.eq(user.id));
         }
-        FormatEntitlementQuery::get_all(db, filters, pagination_options, Some(select_stmt)).await
+        FormatEntitlementQuery::get_all(
+            db,
+            filters,
+            pagination_options,
+            Some(select_stmt),
+            format_entitlement::Column::CreatedAt,
+        )
+        .await
     }
 }
 
@@ -173,11 +183,17 @@ impl UploadSessionQuery {
         pagination_options: &PaginationOptions,
         user: user::Model,
     ) -> Result<(Vec<upload_session::Model>, u64, u64), DbErr> {
-        let mut select_stmt =
-            upload_session::Entity::find().order_by_asc(upload_session::Column::CreatedAt);
+        let mut select_stmt = upload_session::Entity::find();
         if !user.is_superuser {
             select_stmt = select_stmt.filter(upload_session::Column::UserId.eq(user.id));
         }
-        UploadSessionQuery::get_all(db, filters, pagination_options, Some(select_stmt)).await
+        UploadSessionQuery::get_all(
+            db,
+            filters,
+            pagination_options,
+            Some(select_stmt),
+            upload_session::Column::CreatedAt,
+        )
+        .await
     }
 }

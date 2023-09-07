@@ -56,18 +56,25 @@ pub trait GetAllPaginated<'db>: GetAllTrait<'db> {
     }
 
     /// Get all available items using pagination.
-    async fn get_all<C: ConnectionTrait>(
+    async fn get_all<C: ConnectionTrait, O: IntoSimpleExpr + Send>(
         db: &C,
         filters: &Self::FilterQueryModel,
         pagination_options: &PaginationOptions,
         select_stmt: Option<sea_orm::Select<Self::Entity>>,
+        order_by: O,
     ) -> Result<(Vec<Self::ResultModel>, u64, u64), DbErr> {
         debug!("pagination options: {:#?}", pagination_options);
         let select = Self::prepare_select(filters, select_stmt);
-        let paginator = select.paginate(db, pagination_options.page_size);
-        let pagination_fut = paginator.fetch_page(pagination_options.fetch_page);
+        let select_ordered = select.clone().order_by_asc(order_by);
+        // Create paginators.
+        // Note that the ordered paginator only returns items sorted by whatever column was passed in order_by,
+        // for the actual count we don't need to ORDER BY the internal query.
+        let paginator_ordered = select_ordered.paginate(db, pagination_options.page_size);
+        let pagination_fut = paginator_ordered.fetch_page(pagination_options.fetch_page);
+
         if pagination_options.items_and_pages {
             info!("executing potentially slow query");
+            let paginator = select.paginate(db, pagination_options.page_size);
             // if items and pages is enabled, run two queries concurrently:
             // - a normal SELECT query
             // - a COUNT(*) query
