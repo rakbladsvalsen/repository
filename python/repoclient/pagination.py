@@ -218,6 +218,7 @@ class PaginatedResponse:
         per_page: int = 1000,
         json=None,
     ) -> Iterator[object]:
+        logger.debug("Page size: %s", per_page)
         logger.warning(
             """\
 Using parallel pagination strategy is not recommended \

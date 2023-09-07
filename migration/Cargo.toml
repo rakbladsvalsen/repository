@@ -9,13 +9,12 @@ name = "migration"
 path = "src/lib.rs"
 
 [dependencies]
-# async-std = { version = "1", features = ["attributes", "tokio1"] }
 entity = { path = "../entity" }
 tokio = { version = "1.26.0", features = ["macros", "rt-multi-thread"] }
 
 [dependencies.sea-orm-migration]
 version = "0.12.1"
 features = [
-  "runtime-tokio-native-tls",
+  "runtime-tokio-rustls",
   "sqlx-postgres",
 ]

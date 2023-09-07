@@ -45,7 +45,6 @@ class ColumnSchema(RequestModel):
     def string(cls, name: str):
         return cls(name=name, kind=ColumnKind.STRING)
 
-
 class Format(RequestModel):
     id: Optional[str]
     name: str
@@ -67,7 +66,7 @@ class Format(RequestModel):
 
     @staticmethod
     async def get_all(
-        client: AsyncClient, user: User, per_page: int = 100
+        client: AsyncClient, user: User, per_page: int = 1000
     ) -> Iterator[Format]:
         """Get all available formats.
         Note: superusers have complete visibility of all formats.
