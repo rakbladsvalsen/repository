@@ -57,5 +57,6 @@ async def sample_format(api_client, admin_user):
         description="some nice description",
         schema=[numeric_column, string_column],
     ).create(api_client, admin_user)
-    assert fmt.id is not None
+    assert fmt.id is not None, "format id is null"
     yield fmt
+    await fmt.delete(api_client, admin_user)

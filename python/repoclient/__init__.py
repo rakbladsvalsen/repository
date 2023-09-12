@@ -16,9 +16,6 @@ from repoclient.models.entitlement import (
 from repoclient.pagination import PaginatedResponse, PaginationStrategy
 from repoclient.exception import RepositoryException, RepositoryKindError
 
-# initialize process pool
-PaginatedResponse.init_pool()
-
 __all__ = [
     "Format",
     "User",

@@ -45,6 +45,7 @@ class ColumnSchema(RequestModel):
     def string(cls, name: str):
         return cls(name=name, kind=ColumnKind.STRING)
 
+
 class Format(RequestModel):
     id: Optional[str]
     name: str
@@ -157,15 +158,66 @@ class Format(RequestModel):
             json=json_query,
         )
 
+    async def get_data_pandas_dangerous(
+        self, client: AsyncClient, user: User, query: Query, **kwargs
+    ) -> "pandas.DataFrame":
+        """Get all data from the repository in a pandas DataFrame.
+
+        For documentation, please see the related function: `get_data`.
+        This function accepts exactly the same arguments.
+
+        WARNING:
+        This method buffers all the results into a list before building the dataframe.
+        If the passed query matches too many results this function might end up
+        freezing your computer.
+        """
+
+        try:
+            from pandas import DataFrame
+        except Exception as e:
+            logger.error("Couldn't import pandas: ", exc_info=e)
+            raise AssertionError("Please make sure pandas is installed")
+
+        assert self._checked, "Uninitialized format; call create or get first"
+
+        if query.format_id is None:
+            logger.warning(NO_FORMAT_ID_WARN_MSG)
+        logger.warning(
+            "Using the `get_data_pandas` method is discouraged as this method"
+            " needs to load all data into memory first. This might cause"
+            " resource exhaustion when loading large datasets."
+        )
+
+        json_query = query.dict(by_alias=True)
+        buffer: list[Record] = []
+
+        async for items in PaginatedResponse.get_all(
+            upstream=f"{RECORD_URL}/filter",
+            klass=Record,
+            client=client,
+            user=user,
+            exc_handler=self.handle_exception,
+            json=json_query,
+            **kwargs,
+        ):
+            for it in items:
+                buffer.append(it.data)
+        return DataFrame(buffer)
+
     async def get_data(
         self, client: AsyncClient, user: User, query: Query, **kwargs
     ) -> Iterator[Record]:
-        """Query the repository using the default strategy.
+        """Get all data from the repository, using pagination if necessary.
 
         Note that you can pass arbitrary kwargs; these keyword-only arguments will
         be relayed to the pagination function. This allows you to control
         things like the pagination strategy (parallel, fast, default) or items
-        pulled per request.
+        pulled per request. Currently you can use the following kwargs:
+
+        - per_page: int: Pull this many items per request
+        - pagination_strategy: Use this `PaginationStrategy` to fetch items
+        - max_concurrency: Controls the maximum amount of in-flight concurrent
+        requests at any given moment.
 
         :param client: HTTP Client
         :param user: Authenticated user
@@ -177,7 +229,7 @@ class Format(RequestModel):
             logger.warning(NO_FORMAT_ID_WARN_MSG)
         json_query = query.dict(by_alias=True)
 
-        async for item in PaginatedResponse.get_all(
+        async for items in PaginatedResponse.get_all(
             upstream=f"{RECORD_URL}/filter",
             klass=Record,
             client=client,
@@ -186,7 +238,8 @@ class Format(RequestModel):
             json=json_query,
             **kwargs,
         ):
-            yield item
+            for it in items:
+                yield it
 
     async def upload_data(
         self, client: AsyncClient, user: User, data: list[dict]

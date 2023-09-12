@@ -162,6 +162,41 @@ async def test_query(api_client, admin_user, sample_format: repoclient.Format):
 
 
 @pytest.mark.asyncio
+async def test_query_unique(api_client, admin_user, sample_format: repoclient.Format):
+    data = []
+    string_data = []
+    MAX_RECORDS = 10_000
+    for i in range(0, MAX_RECORDS):
+        entry = {"NumericColumn": i, "StringColumn": f"{i}"}
+        data.append(entry)
+
+    upload = await sample_format.upload_data(api_client, admin_user, data)
+    assert upload.outcome == "Success"
+    assert upload.record_count == MAX_RECORDS
+
+    query = repoclient.Query(query=[], format_id=[sample_format.id])
+    # use all available pagination strategies
+    for strategy in list(repoclient.PaginationStrategy):
+        seen_records = set()
+        async for item in sample_format.get_data(
+            api_client, admin_user, query, per_page=1_000, pagination_strategy=strategy
+        ):
+            numeric_value = item.data["NumericColumn"]
+            string_value = item.data["StringColumn"]
+            assert (
+                int(string_value) == numeric_value
+            ), "numeric value not equal to string value"
+            assert (
+                numeric_value not in seen_records
+            ), "received duplicate/invalid record"
+            seen_records.add(numeric_value)
+        # make sure we have exactly MAX_RECORDS records
+        assert len(seen_records) == MAX_RECORDS
+        assert min(seen_records) == 0
+        assert max(seen_records) == (MAX_RECORDS - 1)
+
+
+@pytest.mark.asyncio
 async def test_query_negated(api_client, admin_user, sample_format: repoclient.Format):
     data = []
     string_data = []
