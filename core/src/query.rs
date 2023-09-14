@@ -12,6 +12,7 @@ use ::entity::{
     user::Entity as User,
 };
 use futures::Stream;
+use log::info;
 use sea_orm::*;
 
 // Query objects
@@ -96,6 +97,27 @@ impl RecordQuery {
 impl FormatQuery {
     pub async fn find_by_id(db: &DbConn, id: i32) -> Result<Option<format::Model>, DbErr> {
         Format::find_by_id(id).one(db).await
+    }
+
+    pub async fn get_all_for_user<C: ConnectionTrait>(
+        db: &C,
+        filters: &format::ModelAsQuery,
+        pager: &PaginationOptions,
+        user: user::Model,
+    ) -> Result<(Vec<format::Model>, u64, u64), DbErr> {
+        let mut select_stmt = None;
+        if !user.is_superuser {
+            info!("filtering available formats for user {:?}", user.id);
+            let filter = format_entitlement::Entity::find()
+                .select_only()
+                .column(format_entitlement::Column::FormatId)
+                .filter(format_entitlement::Column::UserId.eq(user.id));
+            let subquery = filter.as_query();
+            select_stmt = Some(
+                format::Entity::find().filter(format::Column::Id.in_subquery(subquery.to_owned())),
+            );
+        }
+        FormatQuery::get_all(db, filters, pager, select_stmt, format::Column::CreatedAt).await
     }
 }
 

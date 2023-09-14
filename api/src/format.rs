@@ -4,8 +4,7 @@ use actix_web::{
     HttpResponse,
 };
 use central_repository_dao::{
-    format::ModelAsQuery, sea_orm::TryIntoModel, user::Model, FormatMutation, FormatQuery,
-    GetAllPaginated,
+    format::ModelAsQuery, sea_orm::TryIntoModel, user::Model as User, FormatMutation, FormatQuery,
 };
 
 use entity::format::Model as FormatModel;
@@ -20,15 +19,20 @@ use crate::{
 };
 
 #[get("")]
-async fn get_all_format(pager: Query<APIPager>, filter: Query<ModelAsQuery>) -> APIResult {
+async fn get_all_format(
+    pager: Query<APIPager>,
+    filter: Query<ModelAsQuery>,
+    user: ReqData<User>,
+) -> APIResult {
     let db = DB_POOL.get().expect("database is not initialized");
     pager.validate()?;
     let filter = filter.into_inner();
     let pager = pager.into_inner().into();
-    Ok(PaginatedResponse::from(
-        FormatQuery::get_all(db, &filter, &pager, None, entity::format::Column::CreatedAt).await?,
+    let user = user.into_inner();
+    Ok(
+        PaginatedResponse::from(FormatQuery::get_all_for_user(db, &filter, &pager, user).await?)
+            .into(),
     )
-    .into())
 }
 
 #[get("{id}")]
@@ -42,7 +46,7 @@ async fn get_format(id: Option<Path<i32>>) -> APIResult {
 }
 
 #[delete("{id}")]
-async fn delete_format(id: Option<Path<i32>>, user: ReqData<Model>) -> APIResult {
+async fn delete_format(id: Option<Path<i32>>, user: ReqData<User>) -> APIResult {
     verify_admin(&user)?;
     let db = DB_POOL.get().expect("database is not initialized");
     let id = *id.ok_or(APIError::BadRequest)?;
@@ -52,7 +56,7 @@ async fn delete_format(id: Option<Path<i32>>, user: ReqData<Model>) -> APIResult
 }
 
 #[post("")]
-async fn create_format(inbound: Json<FormatModel>, user: ReqData<Model>) -> APIResult {
+async fn create_format(inbound: Json<FormatModel>, user: ReqData<User>) -> APIResult {
     let db = DB_POOL.get().expect("database is not initialized");
     verify_admin(&user)?;
     let outbound = FormatMutation::create(db, inbound.into_inner()).await?;
