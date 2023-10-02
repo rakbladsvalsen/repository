@@ -47,6 +47,14 @@ class ColumnSchema(RequestModel):
     def string(cls, name: str):
         return cls(name=name, kind=ColumnKind.STRING)
 
+    def get_python_type(self) -> str:
+        # Return the pandas dtype of this column.
+        if self.kind is ColumnKind.NUMBER:
+            return float
+        elif self.kind is ColumnKind.STRING:
+            return str
+        raise RuntimeError("Unknown kind")
+
 
 class Format(RequestModel):
     id: Optional[str]
@@ -179,7 +187,7 @@ class Format(RequestModel):
             logger.error("Couldn't import pandas: ", exc_info=e)
             raise AssertionError("Please make sure pandas is installed")
 
-        assert self._checked, "Uninitialized format; call create or get first"
+        assert self._checked, "Uninitialized format; call create() or get() first"
 
         if query.format_id is None:
             logger.warning(NO_FORMAT_ID_WARN_MSG)
@@ -203,7 +211,18 @@ class Format(RequestModel):
         ):
             for it in items:
                 buffer.append(it.data)
-        return DataFrame(buffer)
+
+        df = DataFrame(buffer, dtype=object)
+
+        # Cast dataframe columns to proper types
+        logger.debug(
+            "Setting right column types for %s column(s)", len(self.schema_ref)
+        )
+
+        for column in self.schema_ref:
+            df[column.name] = df[column.name].astype(column.get_python_type())
+
+        return df
 
     async def get_data(
         self, client: AsyncClient, user: User, query: Query, **kwargs

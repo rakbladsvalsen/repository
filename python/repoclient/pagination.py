@@ -189,7 +189,7 @@ class PaginatedResponse:
                 "max_concurrency should be a power of 2 to better "
                 "leverage the multicore capabilities of the repository."
                 " Currently set to %s.",
-                math.log(max_concurrency, 2),
+                max_concurrency,
             )
 
     @staticmethod
@@ -283,26 +283,34 @@ class PaginatedResponse:
             await asyncio.gather(*coroutines)
 
         concurrent_tasks_fut = asyncio.create_task(run_concurrent())
-
         logger.debug("%s coroutines have been fired off!", len(coroutines))
         received_pages_count = 1
+
         while received_pages_count < page_count:
             received_pages_count += 1
             percent = (received_pages_count / page_count) * 100
+
+            try:
+                items = await queue.get()
+                queue.task_done()
+            except asyncio.CancelledError:
+                # Stop polling the remaining futures if this
+                # future gets cancelled (aka ctrl-c was pressed)
+                concurrent_tasks_fut.cancel()
+                logger.info("cancelled %s tasks", len(coroutines))
+                break
+
+            if items is QUEUE_SENTINEL:
+                concurrent_tasks_fut.cancel()
+                raise RuntimeError(
+                    "A request worker has crashed. Please check the logs for "
+                    "more details."
+                )
+
             logger.debug(
                 "received so far: %s of %s pages (%.2f%%)",
                 received_pages_count,
                 page_count,
                 percent,
             )
-            items = await queue.get()
-            queue.task_done()
-            if items is QUEUE_SENTINEL:
-                logger.warning(
-                    "at least one request failed: cancelling remaining tasks"
-                )
-                concurrent_tasks_fut.cancel()
-                raise RuntimeError(
-                    "An unexpected error happened. Check the logs for more details."
-                )
             yield items
