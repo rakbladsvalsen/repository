@@ -1,4 +1,5 @@
 import asyncio
+import math
 import functools
 import multiprocessing
 import os
@@ -8,16 +9,34 @@ from concurrent.futures import ProcessPoolExecutor
 from typing import Iterator, Callable, Optional
 from pydantic import parse_obj_as
 from httpx import AsyncClient, Response
+import concurrent
 import logging
-
+from os import environ
 from repoclient.models.user import User
 from enum import Enum, auto
 
+
 logger = logging.getLogger("repoclient")
 
+POOL_EXECUTOR_SIZE = os.environ.get("POOL_EXECUTOR_SIZE", None)
+# Cast POOL_EXECUTOR_SIZE to int if set
+if POOL_EXECUTOR_SIZE is not None:
+    POOL_EXECUTOR_SIZE = int(POOL_EXECUTOR_SIZE)
 QUEUE_SENTINEL = None
 PER_PAGE_DEFAULT = 10_000
-MAX_CONCURRENT = 10
+MAX_CONCURRENT = 8
+POOL_EXECUTOR = concurrent.futures.ProcessPoolExecutor(POOL_EXECUTOR_SIZE)
+
+
+def _deserialize_blocking(as_model: object, json_raw_text: str) -> object:
+    """Deserializes a text object using orJson.
+
+    Parameters
+    ----------
+    as_model: Class to deserialize as
+    json_raw_text: Raw, unparsed JSON
+    """
+    return parse_obj_as(as_model, orjson.loads(json_raw_text))
 
 
 class PaginationStrategy(Enum):
@@ -152,6 +171,28 @@ class PaginatedResponse:
         return ret
 
     @staticmethod
+    def _check_and_warn_max_concurrency(max_concurrency: int):
+        # Check if the passed max_concurrency is a power of two.
+        #
+        # This has a direct impact on performance, because the database
+        # is single-threaded, and most CPUs have a number of CPUs that is
+        # a power of two.
+        power_of_two = math.log(max_concurrency, 2)
+        is_power_of_two = power_of_two == int(power_of_two)
+
+        if is_power_of_two:
+            logger.info(
+                "max_concurrency: using semaphoere with size %s", max_concurrency
+            )
+        else:
+            logger.warning(
+                "max_concurrency should be a power of 2 to better "
+                "leverage the multicore capabilities of the repository."
+                " Currently set to %s.",
+                math.log(max_concurrency, 2),
+            )
+
+    @staticmethod
     async def _get_all_parallel_nowait(
         *,
         upstream: str,
@@ -169,6 +210,8 @@ class PaginatedResponse:
         if not upstream.endswith("&"):
             upstream += "?"
 
+        PaginatedResponse._check_and_warn_max_concurrency(max_concurrency)
+
         # Get the first page (index 0)
         url = f"{upstream}page=0&perPage={per_page}&count=true"
         logger.debug(f"fetching first request URL: {url}")
@@ -179,10 +222,11 @@ class PaginatedResponse:
         page_count: int = int(response.headers.get("repository-page-count"))
         item_count: int = int(response.headers.get("repository-item-count"))
         logger.debug(
-            "page count: %s, item count: %s, max_concurrency: %s",
+            "page count: %s, item count: %s, max_concurrency: %s, pool size (POOL_EXECUTOR_SIZE): %s",
             page_count,
             item_count,
             max_concurrency,
+            POOL_EXECUTOR_SIZE,
         )
         # yield items from first request
         yield response_items
@@ -201,14 +245,18 @@ class PaginatedResponse:
             queue: asyncio.Queue,
             semaphore: asyncio.Semaphore,
         ):
+            loop = asyncio.get_running_loop()
             async with semaphore:
+                logger.debug("acquired semaphore: url: %s", url)
                 try:
                     response = await client.request(
                         "GET", url, headers=user.bearer, json=json
                     )
-                    retval = parse_obj_as(list[klass], orjson.loads(response.text))
-                    await queue.put(retval)
-                    logger.debug("%s: fetched %s items", url, len(retval))
+                    deserialized = await loop.run_in_executor(
+                        POOL_EXECUTOR, _deserialize_blocking, list[klass], response.text
+                    )
+                    await queue.put(deserialized)
+                    logger.debug("%s: fetched %s items", url, len(deserialized))
                 except Exception as exc:
                     logger.error(
                         "Couldn't fetch data (URL: %s, headers: %s, payload: %s)",
@@ -240,7 +288,13 @@ class PaginatedResponse:
         received_pages_count = 1
         while received_pages_count < page_count:
             received_pages_count += 1
-            logger.debug("received so far: %s/%s", received_pages_count, page_count)
+            percent = (received_pages_count / page_count) * 100
+            logger.debug(
+                "received so far: %s of %s pages (%.2f%%)",
+                received_pages_count,
+                page_count,
+                percent,
+            )
             items = await queue.get()
             queue.task_done()
             if items is QUEUE_SENTINEL:

@@ -13,7 +13,7 @@ pub mod upload_session;
 pub mod user;
 pub mod util;
 
-use std::error::Error;
+use std::{error::Error, time::Duration};
 
 use actix_web::{App, HttpServer};
 use central_repository_dao::sea_orm::{ConnectOptions, Database};
@@ -51,7 +51,10 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     let mut opt = ConnectOptions::new(config.database_url);
     // configure thread pool
     opt.max_connections(config.db_pool_max_conn)
-        .min_connections(config.db_pool_min_conn);
+        .min_connections(config.db_pool_min_conn)
+        .acquire_timeout(Duration::from_secs(
+            config.db_acquire_connection_timeout_sec,
+        ));
 
     info!("Trying to create database pool...");
     let conn = Database::connect(opt).await.map(|r| {

@@ -1,4 +1,4 @@
-use entity::{record, upload_session};
+use entity::{format, record, upload_session};
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -16,13 +16,21 @@ impl MigrationTrait for Migration {
                     .if_not_exists()
                     .col(
                         ColumnDef::new(Record::Id)
-                            .integer()
+                            .big_integer()
                             .not_null()
                             .auto_increment()
                             .primary_key(),
                     )
                     .col(ColumnDef::new(Record::Data).json_binary().not_null())
                     .col(ColumnDef::new(Record::UploadSessionId).integer().not_null())
+                    .col(ColumnDef::new(Record::FormatId).integer().not_null())
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(record::Entity, record::Column::FormatId)
+                            .to(format::Entity, format::Column::Id)
+                            .on_delete(ForeignKeyAction::Cascade)
+                            .on_update(ForeignKeyAction::Cascade),
+                    )
                     .foreign_key(
                         ForeignKey::create()
                             // create foreign key from this record...
@@ -35,7 +43,7 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
-        // create index on foreign key to speed up operations
+        // create index on foreign keys to speed up operations
         manager
             .create_index(
                 Index::create()
@@ -45,6 +53,29 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("record_data_idx")
+                    .table(Record::Table)
+                    .col(Record::FormatId)
+                    .to_owned(),
+            )
+            .await?;
+        // Index data column.
+        // !!!!!!!!!!!!!!!!! IMPORTANT NOTE !!!!!!!!!!!!!!!!!
+        // You might need to edit this index and change it to a BTREE index
+        // to speed up operations.
+        manager
+            .create_index(
+                Index::create()
+                    .name("record_data_idx")
+                    .table(Record::Table)
+                    .col(Record::Data)
+                    .to_owned(),
+            )
+            .await?;
+        // Index record column.
         Ok(())
     }
 
@@ -61,5 +92,6 @@ enum Record {
     Table,
     Id,
     UploadSessionId,
+    FormatId,
     Data,
 }

@@ -83,12 +83,14 @@ impl UploadSessionMutation {
 
 pub struct RecordMutation;
 impl RecordMutation {
+    #[inline(always)]
     pub async fn create_many<I>(db: &DbConn, entries: I) -> Result<u64, DbErr>
     where
         I: IntoIterator<Item = record::Model>,
     {
         let converted = entries.into_iter().map(|entry| record::ActiveModel {
             upload_session_id: Set(entry.upload_session_id),
+            format_id: Set(entry.format_id),
             data: Set(entry.data),
             ..Default::default()
         });

@@ -45,7 +45,7 @@ macro_rules! handle_fatal {
         use log::error;
         use std::backtrace::Backtrace;
 
-        error!("Caught error: [{}] {:?}: {}", $msg, $err, $err.to_string());
+        error!("Caught error: [{}] {:#?}: {}", $msg, $err, $err.to_string());
         error!("\n{}", Backtrace::force_capture());
         $return_err
     }};

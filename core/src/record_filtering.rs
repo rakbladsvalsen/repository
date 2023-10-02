@@ -11,9 +11,11 @@ use entity::{
 use log::{debug, error, info};
 use rayon::prelude::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use sea_orm::{
-    sea_query::{extension::postgres::PgBinOper, BinOper, Expr, Query},
+    sea_query::{extension::postgres::PgBinOper, Alias, BinOper, Expr, Query},
     ColumnTrait, Condition, DbConn, EntityTrait, ModelTrait, QueryFilter, QuerySelect, QueryTrait,
+    RelationTrait,
 };
+use sea_query::{IntoCondition, JoinType, SimpleExpr};
 use serde::*;
 use serde_json::Value;
 
@@ -29,6 +31,8 @@ pub enum ConditionKind {
 #[serde(rename_all = "camelCase")]
 /// Supported comparison operators.
 pub enum ComparisonOperator {
+    JoinColumnEq,
+    JoinColumnNotEq,
     Eq,
     Lt,
     Gt,
@@ -39,6 +43,33 @@ pub enum ComparisonOperator {
     Like,
     Regex,
     RegexCaseInsensitive,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Copy)]
+#[serde(rename_all = "camelCase")]
+pub enum JoinKind {
+    Inner,
+    Left,
+    Right,
+    FullOuter,
+}
+
+impl JoinKind {
+    fn get_db_join_type(&self) -> JoinType {
+        match &self {
+            Self::Inner => JoinType::InnerJoin,
+            Self::Left => JoinType::LeftJoin,
+            Self::Right => JoinType::RightJoin,
+            Self::FullOuter => JoinType::FullOuterJoin,
+        }
+    }
+}
+
+impl ComparisonOperator {
+    /// Whether this operator is a join operator or not.
+    fn is_join(&self) -> bool {
+        matches!(&self, Self::JoinColumnEq | Self::JoinColumnNotEq)
+    }
 }
 
 impl Default for ComparisonOperator {
@@ -59,6 +90,7 @@ impl Default for ConditionKind {
 /// users to define matches against a specific column.
 pub struct SearchArguments {
     column: String,
+    join_kind: Option<JoinKind>,
     comparison_operator: ComparisonOperator,
     compare_against: serde_json::Value,
 }
@@ -88,6 +120,11 @@ impl SearchArguments {
             ComparisonOperator::In => {
                 self.validate_array(|i| i.is_string(), "one or more items isn't a string")
             }
+            // TODO: Properly implement JOIN queries. This will just short-circuit the
+            // validation regardless of the type and throw an error.
+            ComparisonOperator::JoinColumnEq | ComparisonOperator::JoinColumnNotEq => Err(
+                DatabaseQueryError::InvalidUsage("joinEq queries aren't stable".into()),
+            ),
             ComparisonOperator::Eq
             | ComparisonOperator::Like
             | ComparisonOperator::ILike
@@ -110,6 +147,11 @@ impl SearchArguments {
             ComparisonOperator::In => {
                 self.validate_array(|i| i.is_number(), "one or more items isn't a number")
             }
+            // TODO: Properly implement JOIN queries. This will just short-circuit the
+            // validation regardless of the type and throw an error.
+            ComparisonOperator::JoinColumnEq | ComparisonOperator::JoinColumnNotEq => Err(
+                DatabaseQueryError::InvalidUsage("joinEq queries aren't stable".into()),
+            ),
             ComparisonOperator::Eq
             | ComparisonOperator::Gt
             | ComparisonOperator::Lt
@@ -129,7 +171,10 @@ impl SearchArguments {
     }
 
     pub fn validate(&self, db_column_kind: &ColumnKind) -> Result<(), DatabaseQueryError> {
-        info!("validating column kind: {:?}", db_column_kind);
+        info!(
+            "ColumnKind: validating {:?} against {:?}",
+            self, db_column_kind
+        );
         match db_column_kind {
             ColumnKind::Number => self.validate_number(),
             ColumnKind::String => self.validate_string(),
@@ -239,6 +284,10 @@ impl PreparedSearchQuery {
     fn get_columns_and_verify_types(
         &self,
     ) -> Result<HashMap<&String, &ColumnKind>, DatabaseQueryError> {
+        // Try to fetch the column name and column kind for all formats.
+        // Note that there might be more than one format with the same columns,
+        // but with different types. In that case, we check if any given column
+        // has more than one type (string/number) associated to them.
         let column_and_kind = self
             .formats
             .par_iter()
@@ -282,11 +331,59 @@ impl PreparedSearchQuery {
             .query
             .par_iter()
             .flat_map(|group| &group.args)
-            .map(|argument| match column_and_kind.get(&argument.column) {
-                Some(column_kind) => argument.validate(column_kind),
-                _ => Err(DatabaseQueryError::InvalidColumnRequested(
-                    argument.column.to_string(),
-                )),
+            .map(|argument| {
+                // Make sure users don't use join operators with normal comparisons
+                if argument.join_kind.is_some() && !argument.comparison_operator.is_join() {
+                    return Err(DatabaseQueryError::InvalidUsage(format!(
+                        "'{}': cannot use joinKind with this operator ({:?})",
+                        argument.column, argument.comparison_operator
+                    )));
+                }
+
+                match column_and_kind.get(&argument.column) {
+                    Some(column_kind) => argument.validate(column_kind),
+                    _ => Err(DatabaseQueryError::InvalidColumnRequested(
+                        argument.column.to_string(),
+                    )),
+                }
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Validate ColumnEq searches.
+        // When using ColumnEq, we need to check for two conditions:
+        // - The target column that is being compared against must exist
+        // - The source column type and target column type must have
+        //   the same data type, i.e. we can only compare string columns against
+        //   string columns and so on.
+        self.query
+            .query
+            .par_iter()
+            .flat_map(|group| &group.args)
+            .filter(|it| it.comparison_operator.is_join())
+            .map(|it| {
+                if it.join_kind.is_none() {
+                    return Err(DatabaseQueryError::InvalidUsage(format!(
+                        "'{}': operator '{:?}' needs a joinKind",
+                        it.column, it.comparison_operator
+                    )));
+                }
+                let source_column_type = column_and_kind.get(&it.column);
+                let compare_column = it
+                    .compare_against
+                    .as_str()
+                    .ok_or(DatabaseQueryError::InvalidUsage(
+                        "compareAgainst must be a valid column".into(),
+                    ))?
+                    .to_string();
+                let compare_column_type = column_and_kind.get(&compare_column);
+                let column_types_matched = source_column_type
+                    .zip(compare_column_type)
+                    .map(|(a, b)| a == b)
+                    .unwrap_or(false);
+                if !column_types_matched {
+                    return Err(DatabaseQueryError::InvalidColumnRequested(compare_column));
+                }
+                Ok(())
             })
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -302,15 +399,10 @@ impl PreparedSearchQuery {
     /// Limit the available visible records.
     #[inline(always)]
     fn limit_visible_records(&self) -> Condition {
-        let subquery = Query::select()
-            .column(upload_session::Column::Id)
-            .cond_where(upload_session::Column::FormatId.is_in(self.get_readable_format_ids()))
-            .from(upload_session::Entity)
-            .to_owned();
-        Condition::all().add(record::Column::UploadSessionId.in_subquery(subquery))
+        Condition::all().add(record::Column::FormatId.is_in(self.get_readable_format_ids()))
     }
 
-    fn apply_upload_session_filters(&self) -> Option<Condition> {
+    fn apply_query_parameter_filters(&self) -> Option<Condition> {
         if let Some(upload_session_filters) = self.query.upload_session.as_ref() {
             debug!(
                 "applying upload session filters: {:?}",
@@ -332,7 +424,135 @@ impl PreparedSearchQuery {
         None
     }
 
-    pub fn build_condition(self) -> Result<Condition, DatabaseQueryError> {
+    pub fn build_condition_for_arg(
+        &self,
+        column_kind: &ColumnKind,
+        expression: &SearchArguments,
+    ) -> Result<SimpleExpr, DatabaseQueryError> {
+        let mut target_json_column = Expr::col(record::Column::Data)
+            .binary(PgBinOper::CastJsonField, Expr::val(&expression.column));
+
+        // determine whether this filter needs cast to FLOAT (postgres needs it)
+        let cast_as_f64 = |value: &serde_json::Value| -> Result<f64, DatabaseQueryError> {
+            value.as_f64().ok_or_else(|| DatabaseQueryError::CastError)
+        };
+        if (*column_kind).eq(&ColumnKind::Number) {
+            target_json_column = target_json_column.cast_as(Alias::new("FLOAT"));
+        }
+
+        target_json_column = match expression.comparison_operator {
+            // Array comparison
+            ComparisonOperator::In => {
+                let array = expression
+                    .compare_against
+                    .as_array()
+                    .expect("arg isn't array");
+                match column_kind {
+                    ColumnKind::Number => {
+                        let casted = PreparedSearchQuery::cast_value_array(array, |v| v.as_f64())?;
+                        Expr::expr(target_json_column).is_in(casted)
+                    }
+                    ColumnKind::String => {
+                        let casted = PreparedSearchQuery::cast_value_array(array, |v| v.as_str())?;
+                        Expr::expr(target_json_column).is_in(casted)
+                    }
+                }
+            }
+            ComparisonOperator::Regex => {
+                target_json_column.binary(PgBinOper::Regex, expression.compare_against.as_str())
+            }
+            ComparisonOperator::RegexCaseInsensitive => target_json_column.binary(
+                PgBinOper::RegexCaseInsensitive,
+                expression.compare_against.as_str(),
+            ),
+            ComparisonOperator::ILike => {
+                target_json_column.binary(PgBinOper::ILike, expression.compare_against.as_str())
+            }
+            ComparisonOperator::Like => {
+                target_json_column.binary(BinOper::Like, expression.compare_against.as_str())
+            }
+            ComparisonOperator::Eq => {
+                match column_kind {
+                    ColumnKind::Number => target_json_column
+                        .binary(BinOper::Equal, expression.compare_against.as_f64()),
+                    ColumnKind::String => target_json_column
+                        .binary(BinOper::Equal, expression.compare_against.as_str()),
+                }
+            }
+            ComparisonOperator::Lt => target_json_column.binary(
+                BinOper::SmallerThan,
+                cast_as_f64(&expression.compare_against)?,
+            ),
+            ComparisonOperator::Lte => target_json_column.binary(
+                BinOper::SmallerThanOrEqual,
+                cast_as_f64(&expression.compare_against)?,
+            ),
+            ComparisonOperator::Gt => target_json_column.binary(
+                BinOper::GreaterThan,
+                cast_as_f64(&expression.compare_against)?,
+            ),
+            ComparisonOperator::Gte => target_json_column.binary(
+                BinOper::GreaterThanOrEqual,
+                cast_as_f64(&expression.compare_against)?,
+            ),
+            _ => {
+                unimplemented!()
+            }
+        };
+        Ok(target_json_column)
+    }
+
+    fn apply_join_filter<E>(
+        &self,
+        column_kind: &ColumnKind,
+        join_kind: JoinKind,
+        expression: &SearchArguments,
+        select: sea_orm::Select<E>,
+    ) -> sea_orm::Select<E>
+    where
+        E: sea_orm::EntityTrait,
+    {
+        let random_alias = "asdadsasd";
+        let left_column = expression.column.clone();
+        let right_column = expression.compare_against.clone();
+        let column_kind = column_kind.to_owned();
+        let operator = expression.comparison_operator;
+
+        let relation = record::Relation::Data
+            .def()
+            .on_condition(move |left, right| {
+                debug!("right column: [{}]", right_column);
+                let mut left = Expr::col(left)
+                    .binary(BinOper::Custom("."), Expr::col(record::Column::Data))
+                    .binary(PgBinOper::CastJsonField, left_column.as_str());
+                let mut right = Expr::col(right)
+                    .binary(BinOper::Custom("."), Expr::col(record::Column::Data))
+                    .binary(PgBinOper::CastJsonField, Expr::val(right_column.as_str()));
+                if column_kind.eq(&ColumnKind::Number) {
+                    left = left.cast_as(Alias::new("FLOAT"));
+                    right = right.cast_as(Alias::new("FLOAT"));
+                }
+                match operator {
+                    ComparisonOperator::JoinColumnEq => right.eq(left).into_condition(),
+                    ComparisonOperator::JoinColumnNotEq => right.ne(left).into_condition(),
+                    _ => todo!(),
+                }
+            });
+
+        select.join_as(
+            join_kind.get_db_join_type(),
+            relation,
+            Alias::new(random_alias),
+        )
+    }
+
+    pub fn apply_condition<E>(
+        self,
+        mut select: sea_orm::Select<E>,
+    ) -> Result<sea_orm::Select<E>, DatabaseQueryError>
+    where
+        E: sea_orm::EntityTrait,
+    {
         let start = std::time::Instant::now();
         let requested_search_columns = self.get_columns_and_verify_types()?;
         let end = std::time::Instant::now() - start;
@@ -342,7 +562,7 @@ impl PreparedSearchQuery {
         let mut condition = Condition::all();
         condition = condition.add(self.limit_visible_records());
         // apply upload session filters, if any was passed.
-        if let Some(c) = self.apply_upload_session_filters() {
+        if let Some(c) = self.apply_query_parameter_filters() {
             condition = condition.add(c);
         }
 
@@ -351,11 +571,7 @@ impl PreparedSearchQuery {
             let mut group_condition = search_group.get_condition_type();
             // iterate over all expressions inside this group
             for expression in search_group.args.iter() {
-                let mut target_json_column = Expr::col(record::Column::Data)
-                    .binary(PgBinOper::CastJsonField, Expr::val(&expression.column));
-
-                // Get the database type for this column.
-                let against_column_kind = requested_search_columns
+                let column_kind = requested_search_columns
                     .get(&expression.column)
                     .ok_or_else(|| {
                         // This should never happen as we previously validated the column type.
@@ -366,77 +582,25 @@ impl PreparedSearchQuery {
                         DatabaseQueryError::InvalidColumnRequested(expression.column.clone())
                     })?;
 
-                // determine whether this filter needs cast to FLOAT (postgres needs it)
-                let cast_as_f64 = |value: &serde_json::Value| -> Result<f64, DatabaseQueryError> {
-                    value.as_f64().ok_or_else(|| DatabaseQueryError::CastError)
-                };
-                target_json_column = match against_column_kind {
-                    ColumnKind::String => target_json_column,
-                    ColumnKind::Number => {
-                        target_json_column.cast_as(sea_orm::sea_query::Alias::new("FLOAT"))
-                    }
-                };
-                target_json_column = match expression.comparison_operator {
-                    ComparisonOperator::In => {
-                        let array = expression
-                            .compare_against
-                            .as_array()
-                            .expect("arg isn't array");
-                        match against_column_kind {
-                            ColumnKind::Number => {
-                                let casted =
-                                    PreparedSearchQuery::cast_value_array(array, |v| v.as_f64())?;
-                                Expr::expr(target_json_column).is_in(casted)
-                            }
-                            ColumnKind::String => {
-                                let casted =
-                                    PreparedSearchQuery::cast_value_array(array, |v| v.as_str())?;
-                                Expr::expr(target_json_column).is_in(casted)
-                            }
-                        }
-                    }
-                    ComparisonOperator::Regex => target_json_column
-                        .binary(PgBinOper::Regex, expression.compare_against.as_str()),
-                    ComparisonOperator::RegexCaseInsensitive => target_json_column.binary(
-                        PgBinOper::RegexCaseInsensitive,
-                        expression.compare_against.as_str(),
-                    ),
-                    ComparisonOperator::ILike => target_json_column
-                        .binary(PgBinOper::ILike, expression.compare_against.as_str()),
-                    ComparisonOperator::Like => target_json_column
-                        .binary(BinOper::Like, expression.compare_against.as_str()),
-                    ComparisonOperator::Eq => match against_column_kind {
-                        ColumnKind::Number => target_json_column
-                            .binary(BinOper::Equal, expression.compare_against.as_f64()),
-                        ColumnKind::String => target_json_column
-                            .binary(BinOper::Equal, expression.compare_against.as_str()),
-                    },
-                    ComparisonOperator::Lt => target_json_column.binary(
-                        BinOper::SmallerThan,
-                        cast_as_f64(&expression.compare_against)?,
-                    ),
-                    ComparisonOperator::Lte => target_json_column.binary(
-                        BinOper::SmallerThanOrEqual,
-                        cast_as_f64(&expression.compare_against)?,
-                    ),
-                    ComparisonOperator::Gt => target_json_column.binary(
-                        BinOper::GreaterThan,
-                        cast_as_f64(&expression.compare_against)?,
-                    ),
-                    ComparisonOperator::Gte => target_json_column.binary(
-                        BinOper::GreaterThanOrEqual,
-                        cast_as_f64(&expression.compare_against)?,
-                    ),
-                };
-                group_condition = group_condition.add(target_json_column);
+                if let Some(join_kind) = expression.join_kind {
+                    select = self.apply_join_filter(column_kind, join_kind, expression, select)
+                } else {
+                    group_condition =
+                        group_condition.add(self.build_condition_for_arg(column_kind, expression)?);
+                }
             }
-            // negate this condition if "not" is enabled.
-            condition = match search_group.not {
-                true => condition.add(group_condition.not()),
-                false => condition.add(group_condition),
-            };
+
+            // only add this condition if something was actually added, i.e.
+            // if the argument was a non-join statement.
+            if !group_condition.is_empty() {
+                // negate this entire search group if "not" is enabled.
+                condition = match search_group.not {
+                    true => condition.add(group_condition.not()),
+                    false => condition.add(group_condition),
+                };
+            }
         }
-        Ok(condition)
+        Ok(select.filter(condition))
     }
 
     fn cast_value_array<'a, T>(

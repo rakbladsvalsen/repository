@@ -63,8 +63,8 @@ impl RecordQuery {
         pagination_options: &PaginationOptions,
         prepared_search: PreparedSearchQuery,
     ) -> Result<(Vec<record::Model>, u64, u64), DatabaseQueryError> {
-        let extra_condition = prepared_search.build_condition()?;
-        let select = record::Entity::find().filter(extra_condition);
+        let select = record::Entity::find();
+        let select = prepared_search.apply_condition(select)?;
         RecordQuery::get_all(
             db,
             filters,
@@ -84,10 +84,10 @@ impl RecordQuery {
         Pin<Box<dyn Stream<Item = Result<record::Model, sea_orm::DbErr>> + Send + 'static>>,
         DatabaseQueryError,
     > {
-        let extra_condition = prepared_search.build_condition()?;
-        let select = record::Entity::find()
-            .filter(extra_condition)
-            .order_by_asc(record::Column::Id);
+        // let extra_condition = prepared_search.build_condition()?;
+        let select = record::Entity::find().order_by_asc(record::Column::Id);
+        let select = prepared_search.apply_condition(select)?;
+
         RecordQuery::get_all_as_stream(db, filters, Some(select))
             .await
             .map_err(DatabaseQueryError::from)

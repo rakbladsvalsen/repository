@@ -172,7 +172,7 @@ async fn create_record(inbound: Json<InboundRecordData>, auth: ReqData<UserModel
             let entries = inbound
                 .data
                 .into_par_iter()
-                .map(|entry| RecordModel::new(upload_session.id, entry))
+                .map(|entry| RecordModel::new(upload_session.id, format_id, entry))
                 .collect::<Vec<_>>();
             let insert_tasks = entries
                 .par_chunks(*BULK_INSERT_CHUNK_SIZE)

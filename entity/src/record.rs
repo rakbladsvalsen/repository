@@ -32,7 +32,7 @@ pub struct Model {
     // Don't let users define this field.
     #[as_query(column = "Column::Id", eq, lt, gt, lte, gte, custom_convert = "*value")]
     #[serde(skip_deserializing)]
-    pub id: i32,
+    pub id: i64,
     #[as_query(
         column = "Column::UploadSessionId",
         eq,
@@ -42,16 +42,21 @@ pub struct Model {
         gte,
         custom_convert = "*value"
     )]
+    #[serde(skip_deserializing)]
     pub upload_session_id: i32,
+    #[serde(skip_deserializing)]
+    pub format_id: i32,
     pub data: RecordJsonData,
 }
 
 impl Model {
-    pub fn new(upload_session_id: i32, data: DynamicHashmap) -> Self {
+    #[inline(always)]
+    pub fn new(upload_session_id: i32, format_id: i32, data: DynamicHashmap) -> Self {
         Self {
             upload_session_id,
+            format_id,
             data: RecordJsonData(data),
-            ..Default::default()
+            id: Default::default(),
         }
     }
 }
@@ -65,6 +70,18 @@ pub enum Relation {
         to = "super::upload_session::Column::Id"
     )]
     UploadSession,
+    #[sea_orm(
+        belongs_to = "super::format::Entity",
+        from = "Column::Id",
+        to = "super::format::Column::Id"
+    )]
+    FormatId,
+    #[sea_orm(
+        belongs_to = "super::record::Entity",
+        from = "Column::Data",
+        to = "Column::Data"
+    )]
+    Data,
 }
 
 impl Related<super::upload_session::Entity> for Entity {

@@ -21,6 +21,8 @@ You are querying the repository without specifying a format_id. \
 This will return all records available for your user. This can \
 significantly slow down your query. Please specify a format_id."""
 
+proxy_handler = RequestModel()
+
 
 class Record(RequestModel):
     id: int
@@ -79,7 +81,6 @@ class Format(RequestModel):
         :param user:
         :param per_page:
         """
-        proxy_handler = RequestModel()
         async for item in PaginatedResponse.get_all(
             upstream=FORMAT_URL,
             klass=Format,
@@ -123,7 +124,7 @@ class Format(RequestModel):
         """
         response = await client.get(f"{FORMAT_URL}/{id}", headers=user.bearer)
         if response.status_code != 200:
-            cls.handle_exception(response)
+            proxy_handler.handle_exception(response)
         json = response.json()
         ret = cls(**json)
         ret._checked = True
@@ -262,7 +263,7 @@ class Format(RequestModel):
         assert all(
             isinstance(i, dict) for i in data
         ), "expected list of dicts, got something else"
-        payload = {"formatId": self.id, "data": data}
+        payload = {"formatId": int(self.id), "data": data}
         response = await client.post(RECORD_URL, json=payload, headers=user.bearer)
         if response.status_code != 200:
             self.handle_exception(response)

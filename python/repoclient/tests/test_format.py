@@ -43,3 +43,5 @@ async def test_create_format(api_client, admin_user):
     query = repoclient.Query(query=[], format_id=[fmt.id])
     record_count = await fmt.get_count(api_client, admin_user, query)
     assert record_count == 0, "format has records"
+    # Clean up
+    await fmt.delete(api_client, admin_user)

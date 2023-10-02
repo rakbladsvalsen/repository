@@ -1,6 +1,6 @@
 use actix_web::HttpResponse;
 use central_repository_dao::PaginationOptions;
-use log::debug;
+use log::info;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -86,7 +86,7 @@ where
     T: Serialize,
 {
     fn from(value: PaginatedResponse<T>) -> Self {
-        debug!(
+        info!(
             "page count: {}, item count: {}, returning {} items",
             value.num_pages,
             value.num_items,

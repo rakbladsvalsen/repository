@@ -25,6 +25,7 @@ lazy_static! {
     pub static ref DEFAULT_PAGINATION_SIZE: u64 = CONFIG.default_pagination_size;
     pub static ref RETURN_QUERY_COUNT: bool = CONFIG.return_query_count;
     pub static ref MAX_JSON_PAYLOAD_SIZE: usize = CONFIG.max_json_payload_size as usize;
+    pub static ref DB_ACQUIRE_CONNECTION_TIMEOUT_SEC: usize = CONFIG.db_acquire_connection_timeout_sec as usize;
 }
 
 fn get_coding_keys(key: &String) -> Result<(EncodingKey, DecodingKey), Box<dyn Error>> {
@@ -86,6 +87,9 @@ pub struct Config {
     // set by default to 100_000 bytes (100 KB)
     #[envconfig(from = "MAX_JSON_PAYLOAD_SIZE", default = "100000")]
     pub max_json_payload_size: u64,
+
+    #[envconfig(from = "DB_ACQUIRE_CONNECTION_TIMEOUT_SEC", default = "30")]
+    pub db_acquire_connection_timeout_sec: u64,
 }
 
 impl Config {

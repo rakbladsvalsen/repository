@@ -1,6 +1,6 @@
 {
 	"info": {
-		"_postman_id": "cd46ffa0-b26a-4ce1-92e8-1ee21c4468c9",
+		"_postman_id": "2d9b3fd4-bd10-4eb3-9073-1a563bfbfc7a",
 		"name": "Central Repository",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
@@ -964,7 +964,7 @@
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"formatId\": {{NEW_FORMAT_ID}},\n    \"data\": [\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        }\n    ]\n}",
+					"raw": "{\n    \"formatId\": {{NEW_FORMAT_ID}},\n    \"data\": [\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        },\n        {\n            \"Column_8bGCFff2cC\": 12132123,\n            \"Column_8bGCFff2cZ\": \"zzz\"\n        }\n    ]\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -984,7 +984,137 @@
 			"response": []
 		},
 		{
+			"name": "[Search] Create new search",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{TOKEN}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"name\": \"cashiRecordsForToday\",\n    \"uploadSession\":{\n        \"createdAtGte\": \"{{TODAY}}\"\n    },\n    \"query\": [\n        {\n            \"args\": [\n                {\n                    \"column\": \"Column_8bGCFff2cC\",\n                    \"comparisonOperator\": \"eq\",\n                    \"compareAgainst\": 12132123\n                }\n            ]\n        }\n    ]\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{HOST}}/search",
+					"host": [
+						"{{HOST}}"
+					],
+					"path": [
+						"search"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "[Search] Get predefined data",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{TOKEN}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [
+					{
+						"key": "X-Query-Params",
+						"value": "ewogICAgInVwbG9hZFNlc3Npb24iOnsKICAgICAgICAiY3JlYXRlZEF0R3RlIjogIjIwMjMtMDQtMTlUMDI6Mzg6MDEuNTI4WiIKICAgIH0sCiAgICAicXVlcnkiOiBbCiAgICAgICAgewogICAgICAgICAgICAiYXJncyI6IFsKICAgICAgICAgICAgICAgIHsKICAgICAgICAgICAgICAgICAgICAiY29sdW1uIjogIkNvbHVtbl84YkdDRmZmMmNDIiwKICAgICAgICAgICAgICAgICAgICAiY29tcGFyaXNvbk9wZXJhdG9yIjogImVxIiwKICAgICAgICAgICAgICAgICAgICAiY29tcGFyZUFnYWluc3QiOiAxMjEzMjEyMwogICAgICAgICAgICAgICAgfQogICAgICAgICAgICBdCiAgICAgICAgfQogICAgXQp9Cg==",
+						"type": "default",
+						"disabled": true
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{HOST}}/search/cashiRecordsForToday",
+					"host": [
+						"{{HOST}}"
+					],
+					"path": [
+						"search",
+						"cashiRecordsForToday"
+					]
+				}
+			},
+			"response": []
+		},
+		{
 			"name": "[Format] Filtered data",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{TOKEN}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [
+					{
+						"key": "X-Query-Params",
+						"value": "ewogICAgInVwbG9hZFNlc3Npb24iOnsKICAgICAgICAiY3JlYXRlZEF0R3RlIjogIjIwMjMtMDQtMTlUMDI6Mzg6MDEuNTI4WiIKICAgIH0sCiAgICAicXVlcnkiOiBbCiAgICAgICAgewogICAgICAgICAgICAiYXJncyI6IFsKICAgICAgICAgICAgICAgIHsKICAgICAgICAgICAgICAgICAgICAiY29sdW1uIjogIkNvbHVtbl84YkdDRmZmMmNDIiwKICAgICAgICAgICAgICAgICAgICAiY29tcGFyaXNvbk9wZXJhdG9yIjogImVxIiwKICAgICAgICAgICAgICAgICAgICAiY29tcGFyZUFnYWluc3QiOiAxMjEzMjEyMwogICAgICAgICAgICAgICAgfQogICAgICAgICAgICBdCiAgICAgICAgfQogICAgXQp9Cg==",
+						"type": "default",
+						"disabled": true
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"uploadSession\":{\n        \"createdAtGte\": \"2023-04-19T02:38:01.528Z\"\n    },\n    \"query\": [\n        {\n            \"args\": [\n                {\n                    \"column\": \"Column_8bGCFff2cC\",\n                    \"comparisonOperator\": \"eq\",\n                    \"compareAgainst\": 12132123\n                }\n            ]\n        }\n    ]\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{HOST}}/record/filter",
+					"host": [
+						"{{HOST}}"
+					],
+					"path": [
+						"record",
+						"filter"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "[Format] Filtered data CSV",
 			"protocolProfileBehavior": {
 				"disableBodyPruning": true
 			},
@@ -1011,23 +1141,13 @@
 					}
 				},
 				"url": {
-					"raw": "{{HOST}}/record/filter?perPage=1&debug=true",
+					"raw": "{{HOST}}/record/filter-stream",
 					"host": [
 						"{{HOST}}"
 					],
 					"path": [
 						"record",
-						"filter"
-					],
-					"query": [
-						{
-							"key": "perPage",
-							"value": "1"
-						},
-						{
-							"key": "debug",
-							"value": "true"
-						}
+						"filter-stream"
 					]
 				}
 			},
