@@ -56,7 +56,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
-                    .name("record_data_idx")
+                    .name("format_id_fk")
                     .table(Record::Table)
                     .col(Record::FormatId)
                     .to_owned(),
