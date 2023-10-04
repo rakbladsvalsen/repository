@@ -7,6 +7,7 @@ from httpx import AsyncClient
 import logging
 
 from repoclient import User
+from repoclient.exception import RepositoryError
 from repoclient.models.handler import RequestModel
 
 logger = logging.getLogger("repoclient")
@@ -30,6 +31,5 @@ class FormatEntitlement(RequestModel):
         response = await client.post(
             "/entitlement", headers=user.bearer, json=self.dict(by_alias=True)
         )
-        if response.status_code != 201:
-            self.handle_exception(response)
+        RepositoryError.verify_raise_conditionally(response)
         return FormatEntitlement.parse_obj(response.json())

@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from typing import Optional
 from datetime import datetime
-from pydantic import BaseModel, PrivateAttr, Field, UUID4
+from pydantic import PrivateAttr, Field
 from httpx import AsyncClient
 
+from repoclient.exception import RepositoryError
 from repoclient.models.handler import RequestModel
 
 
@@ -30,8 +31,7 @@ class User(RequestModel):
         """
         assert self.password is not None, "password isn't set!"
         response = await client.post("/login", json=self.dict())
-        if response.status_code != 200:
-            self.handle_exception(response)
+        RepositoryError.verify_raise_conditionally(response)
         json = response.json()
         ret: User = User.parse_obj(json["user"])
         ret.token = json["token"]
@@ -41,8 +41,7 @@ class User(RequestModel):
     @classmethod
     async def get(cls, client: AsyncClient, user: User, id: int) -> User:
         response = await client.get(f"/user/{id}", headers=user.bearer)
-        if response.status_code != 200:
-            cls.handle_exception(response)
+        RepositoryError.verify_raise_conditionally(response)
         ret = User.parse_obj(response.json())
         ret._checked = True
         return ret
@@ -63,15 +62,14 @@ class User(RequestModel):
             f"User <username: {self.username}, checked: {self._checked}, id: {self.id}>"
         )
 
-    async def create_user(self, client: AsyncClient, user: User):
+    async def create_user(self, client: AsyncClient, user: User) -> User:
         assert self.is_superuser, "only superusers may use this resource"
         response = await client.post(
             "/user",
             headers=self.bearer,
             json=user.dict(by_alias=True, exclude_none=True),
         )
-        if response.status_code != 201:
-            self.handle_exception(response)
+        RepositoryError.verify_raise_conditionally(response)
         ret: User = User.parse_obj(response.json())
         # copy over the original user's password
         ret.password = user.password

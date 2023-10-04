@@ -4,16 +4,16 @@ from __future__ import annotations
 from typing import Optional, Iterator
 from datetime import datetime
 
-from pydantic import Field, UUID4
+from pydantic import Field
 from enum import Enum
 from httpx import AsyncClient
 import logging
 
-from repoclient import User, Column
+from repoclient import User
+from repoclient.exception import RepositoryError
 from repoclient.models.common import UserFormatFilter
 from repoclient.models.handler import RequestModel
 from repoclient.pagination import PaginatedResponse
-from repoclient.util import date_to_utc_iso
 
 logger = logging.getLogger("repoclient")
 
@@ -69,8 +69,7 @@ class FormatEntitlement(RequestModel):
         response = await client.post(
             "/entitlement", headers=user.bearer, json=self.dict(by_alias=True)
         )
-        if response.status_code != 201:
-            self.handle_exception(response)
+        RepositoryError.verify_raise_conditionally(response)
         return FormatEntitlement.parse_obj(response.json())
 
     async def delete(self, client: AsyncClient, user: User):
@@ -95,8 +94,8 @@ class FormatEntitlement(RequestModel):
             json=self.dict(by_alias=True, exclude={"created_at"}),
             headers=user.bearer,
         )
-        if response.status_code != 204:
-            self.handle_exception(response)
+        RepositoryError.verify_raise_conditionally(response)
+
         logger.debug(
             "successfully deleted entitlement for: user id: %s, on format id %s",
             self.user_id,
@@ -122,13 +121,12 @@ class FormatEntitlement(RequestModel):
         if query is not None:
             upstream = query.build_url("/entitlement?")
 
-        proxy_handler = RequestModel()
         async for item in PaginatedResponse.get_all(
             upstream=upstream,
-            klass=FormatEntitlement,
+            klass=list[FormatEntitlement],
             client=client,
             user=user,
-            exc_handler=proxy_handler.handle_exception,
             **kwargs,
         ):
-            yield item
+            for it in item:
+                yield it

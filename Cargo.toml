@@ -14,5 +14,5 @@ tokio = { version = "1.27.0", features = ["tracing"] }
 
 [profile.release]
 opt-level = 3
-# lto = true
+lto = "fat"
 panic = "abort"

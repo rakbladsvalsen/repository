@@ -12,7 +12,7 @@ use central_repository_dao::{
 };
 
 use actix_web::{
-    get, post,
+    post,
     web::{self, Json, Query, ReqData},
     HttpResponse,
 };
@@ -22,7 +22,7 @@ use futures::{future::join_all, TryStreamExt};
 use log::{debug, error, info};
 use rayon::{prelude::*, slice::ParallelSlice};
 
-#[get("/filter")]
+#[post("/filter")]
 async fn get_all_filtered_records(
     pager: Query<APIPager>,
     filter: Query<ModelAsQuery>,
@@ -50,7 +50,7 @@ async fn get_all_filtered_records(
     Ok(PaginatedResponse::from(records).into())
 }
 
-#[get("/filter-stream")]
+#[post("/filter-stream")]
 async fn get_all_filtered_records_stream(
     filter: Query<ModelAsQuery>,
     auth: ReqData<UserModel>,

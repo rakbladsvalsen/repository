@@ -6,6 +6,8 @@ from datetime import datetime
 from pydantic import PrivateAttr, Field
 from httpx import AsyncClient
 import logging
+
+from repoclient.exception import RepositoryError
 from repoclient.models.handler import RequestModel
 from repoclient.models.query import Query
 from repoclient.models.upload_session import UploadSession
@@ -20,8 +22,6 @@ NO_FORMAT_ID_WARN_MSG = """\
 You are querying the repository without specifying a format_id. \
 This will return all records available for your user. This can \
 significantly slow down your query. Please specify a format_id."""
-
-proxy_handler = RequestModel()
 
 
 class Record(RequestModel):
@@ -91,14 +91,14 @@ class Format(RequestModel):
         """
         async for item in PaginatedResponse.get_all(
             upstream=FORMAT_URL,
-            klass=Format,
+            klass=list[Format],
             client=client,
             user=user,
-            exc_handler=proxy_handler.handle_exception,
             per_page=per_page,
         ):
-            item._checked = True
-            yield item
+            for it in item:
+                it._checked = True
+                yield it
 
     async def create(self, client: AsyncClient, user: User) -> Format:
         """Create the format. This call may only be used by superusers.
@@ -110,8 +110,7 @@ class Format(RequestModel):
         response = await client.post(
             FORMAT_URL, json=self.dict(by_alias=True), headers=user.bearer
         )
-        if response.status_code != 201:
-            self.handle_exception(response)
+        RepositoryError.verify_raise_conditionally(response)
         self.id = response.json()["id"]
         logger.debug("successfully created format, id: %s", self.id)
         self._checked = True
@@ -131,8 +130,7 @@ class Format(RequestModel):
         :return:
         """
         response = await client.get(f"{FORMAT_URL}/{id}", headers=user.bearer)
-        if response.status_code != 200:
-            proxy_handler.handle_exception(response)
+        RepositoryError.verify_raise_conditionally(response)
         json = response.json()
         ret = cls(**json)
         ret._checked = True
@@ -147,8 +145,7 @@ class Format(RequestModel):
         """
         assert self._checked, "Uninitialized format; call create or get first"
         response = await client.delete(f"{FORMAT_URL}/{self.id}", headers=user.bearer)
-        if response.status_code != 204:
-            self.handle_exception(response)
+        RepositoryError.verify_raise_conditionally(response)
         logger.debug("successfully deleted format, id: %s", self.id)
         return True
 
@@ -163,12 +160,12 @@ class Format(RequestModel):
             upstream=f"{RECORD_URL}/filter",
             client=client,
             user=user,
-            exc_handler=self.handle_exception,
             json=json_query,
+            method="POST",
         )
 
     async def get_data_pandas_dangerous(
-        self, client: AsyncClient, user: User, query: Query, **kwargs
+        self, client: AsyncClient, user: User, query: Query, *args, **kwargs
     ) -> "pandas.DataFrame":
         """Get all data from the repository in a pandas DataFrame.
 
@@ -202,17 +199,27 @@ class Format(RequestModel):
 
         async for items in PaginatedResponse.get_all(
             upstream=f"{RECORD_URL}/filter",
-            klass=Record,
+            klass=list[Record],
             client=client,
             user=user,
-            exc_handler=self.handle_exception,
             json=json_query,
+            method="POST",
+            *args,
             **kwargs,
         ):
             for it in items:
                 buffer.append(it.data)
 
-        df = DataFrame(buffer, dtype=object)
+        if len(buffer) > 0:
+            df = DataFrame(buffer, dtype=object)
+        else:
+            # If there are no records for this format, still create a
+            # dataframe with the right columns and types.
+            logger.warning("Got empty buffer. The returned dataframe will be EMPTY.")
+            empty_buff: dict[str, list] = {}
+            for column in self.schema_ref:
+                empty_buff[column.name] = []
+            df = DataFrame(empty_buff, dtype=object)
 
         # Cast dataframe columns to proper types
         logger.debug(
@@ -251,11 +258,11 @@ class Format(RequestModel):
 
         async for items in PaginatedResponse.get_all(
             upstream=f"{RECORD_URL}/filter",
-            klass=Record,
+            klass=list[Record],
             client=client,
             user=user,
-            exc_handler=self.handle_exception,
             json=json_query,
+            method="POST",
             **kwargs,
         ):
             for it in items:
@@ -284,6 +291,5 @@ class Format(RequestModel):
         ), "expected list of dicts, got something else"
         payload = {"formatId": int(self.id), "data": data}
         response = await client.post(RECORD_URL, json=payload, headers=user.bearer)
-        if response.status_code != 200:
-            self.handle_exception(response)
+        RepositoryError.verify_raise_conditionally(response)
         return UploadSession.parse_obj(response.json())

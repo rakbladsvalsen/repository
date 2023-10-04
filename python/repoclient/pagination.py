@@ -1,34 +1,39 @@
 import asyncio
 import math
-import functools
-import multiprocessing
-import os
 import orjson
 from pprint import pformat
 from concurrent.futures import ProcessPoolExecutor
-from typing import Iterator, Callable, Optional
+from typing import Iterator, Tuple, TypeVar
 from pydantic import parse_obj_as
 from httpx import AsyncClient, Response
 import concurrent
 import logging
 from os import environ
+
+from repoclient.exception import RepositoryError
 from repoclient.models.user import User
 from enum import Enum, auto
 
+T = TypeVar("T")
 
 logger = logging.getLogger("repoclient")
 
-POOL_EXECUTOR_SIZE = os.environ.get("POOL_EXECUTOR_SIZE", None)
+POOL_EXECUTOR_SIZE = environ.get("POOL_EXECUTOR_SIZE", None)
+MAX_RETRIES = environ.get("MAX_RETRIES", 3)
 # Cast POOL_EXECUTOR_SIZE to int if set
 if POOL_EXECUTOR_SIZE is not None:
     POOL_EXECUTOR_SIZE = int(POOL_EXECUTOR_SIZE)
+
+if MAX_RETRIES is not None:
+    MAX_RETRIES = int(MAX_RETRIES)
+
 QUEUE_SENTINEL = None
 PER_PAGE_DEFAULT = 10_000
 MAX_CONCURRENT = 8
 POOL_EXECUTOR = concurrent.futures.ProcessPoolExecutor(POOL_EXECUTOR_SIZE)
 
 
-def _deserialize_blocking(as_model: object, json_raw_text: str) -> object:
+def _deserialize_blocking(as_model: T, json_raw_text: str) -> T:
     """Deserializes a text object using orJson.
 
     Parameters
@@ -39,26 +44,79 @@ def _deserialize_blocking(as_model: object, json_raw_text: str) -> object:
     return parse_obj_as(as_model, orjson.loads(json_raw_text))
 
 
+async def _make_paginated_request(
+    client: AsyncClient,
+    upstream: str,
+    pydantic_model: T,
+    page: int,
+    per_page: int,
+    method: str = "GET",
+    headers=None,
+    json=None,
+    count: bool = False,
+    retries: int = MAX_RETRIES,
+) -> Tuple[Response, list[T]]:
+    """Make a repository/paginated call.
+
+    Parameters:
+    upstream: Upstream URL
+    pydantic_model: Deserialize as this model
+    page: Page to fetch
+    per_page: Pull this many items
+    method: HTTP Method
+    headers: HTTP Headers
+    json: JSON Body
+    count: Whether to pull the item count or not for this request
+    """
+    count = "true" if count else "false"
+    url = f"{upstream}page={page}&perPage={per_page}&count={count}"
+    logger.debug(
+        "url: %s page: %s, per_page: %s, method: %s", url, page, per_page, method
+    )
+    loop = asyncio.get_running_loop()
+    while True:
+        try:
+            response = await client.request(method, url, headers=headers, json=json)
+            RepositoryError.verify_raise_conditionally(response)
+            break
+        except Exception as e:
+            if retries == 0:
+                logger.error("reached max retries (%s)", MAX_RETRIES, exc_info=e)
+                raise e from e
+            retries -= 1
+            logger.warning(
+                "retrying failed request (attempting %s more times, max: %s)",
+                retries,
+                MAX_RETRIES,
+                exc_info=e,
+            )
+
+    try:
+        deserialized = await loop.run_in_executor(
+            POOL_EXECUTOR, _deserialize_blocking, pydantic_model, response.text
+        )
+    except Exception as e:
+        logger.error("Deserialize error: content: %s", exc_info=e)
+        raise e from e
+    return response, deserialized
+
+
 class PaginationStrategy(Enum):
     """
     The strategy to use when paginating.
 
 
     ``FAST``:
-        This strategy will pull data until the server returns an empty
-        response. This might be considerably faster for queries where
-        a large number of rows were matched.
-        This will disable the server-side pagination and item counting, at
-        the expense of having to issue an extra, empty request (this tells us
-        we've queried all the available data).
+        The default strategy. This will query the repository in a sequential
+        fashion. It's the optimal option for queries that don't need to pull
+        a lot of data.
+        This strategy will basically call the parallel code with a semaphore
+        of size 1.
 
     ``PARALLEL``:
         This strategy will issue multiple requests concurrently in the most
-        efficient way. First, a request using the default strategy is
-        issued to get the total number of pages. After that, the ``FAST``
-        strategy is used to pull all remaining data concurrently.
-        This strategy is faster than all the other strategies, but might consume
-        more memory.
+        efficient way. You can control how many requests are issued in parallel
+        using the `max_concurrency` kwarg when you use this strategy.
     """
 
     PARALLEL = auto()
@@ -76,21 +134,21 @@ class PaginatedResponse:
         upstream: str,
         client: AsyncClient,
         user: User,
-        exc_handler: Callable[[Response], None],
+        method: str = "GET",
         json=None,
     ) -> int:
         """
         Returns the total number of items that match the query.
         """
-        assert exc_handler is not None, "Exception handler is None"
         if not upstream.endswith("&"):
             upstream += "?"
         # we only want the item count headers.
         url = f"{upstream}page=0&perPage=1"
         logger.debug(f"fetching url: {url}")
-        response = await client.request("GET", url, headers=user.bearer, json=json)
+        response = await client.request(method, url, headers=user.bearer, json=json)
         if response.status_code != 200:
-            exc_handler(response)
+            logger.error("response was: %s", response.text)
+            RepositoryError.verify_raise_conditionally(response)
         item_count: int = int(response.headers.get("repository-item-count"))
         logger.debug("item count: %s", item_count)
         return item_count
@@ -99,32 +157,33 @@ class PaginatedResponse:
     async def get_all(
         *,
         upstream: str,
-        klass: object,
+        klass: T,
         client: AsyncClient,
         user: User,
-        exc_handler: Callable[[Response], None],
         per_page: int = PER_PAGE_DEFAULT,
         pagination_strategy: PaginationStrategy = PaginationStrategy.FAST,
+        method: str = "GET",
         json=None,
         **kwargs,
-    ) -> Iterator[object]:
-        assert exc_handler is not None, "Exception handler is None"
+    ) -> Iterator[T]:
         logger.debug("using pagination strategy: %s", pagination_strategy)
         if json is not None and logger.level <= logging.DEBUG:
             logger.debug("sending query: \n%s", pformat(json, indent=2))
 
-        if pagination_strategy == PaginationStrategy.FAST:
+        if pagination_strategy is PaginationStrategy.FAST:
             strategy_fn = PaginatedResponse._get_all_fast
-        elif pagination_strategy == PaginationStrategy.PARALLEL:
-            strategy_fn = PaginatedResponse._get_all_parallel_nowait
+        elif pagination_strategy is PaginationStrategy.PARALLEL:
+            strategy_fn = PaginatedResponse._get_all_parallel
+        else:
+            raise RuntimeError(f"Unimplemented strategy: {pagination_strategy}")
         async for items in strategy_fn(
             upstream=upstream,
             klass=klass,
             client=client,
             user=user,
-            exc_handler=exc_handler,
             per_page=per_page,
             json=json,
+            method=method,
             **kwargs,
         ):
             yield items
@@ -133,42 +192,24 @@ class PaginatedResponse:
     async def _get_all_fast(
         *,
         upstream: str,
-        klass: object,
+        klass: T,
         client: AsyncClient,
         user: User,
-        exc_handler: Callable[[Response], None],
+        method: str,
         per_page: int = PER_PAGE_DEFAULT,
         json=None,
-    ) -> Iterator[object]:
-        current_page = 0
-        if not upstream.endswith("&"):
-            upstream += "?"
-        while True:
-            url = f"{upstream}page={current_page}&perPage={per_page}&count=false"
-            logger.debug(f"fetching url: {url}")
-            response = await client.request("GET", url, headers=user.bearer, json=json)
-            if response.status_code != 200:
-                exc_handler(response)
-            ret = parse_obj_as(list[klass], response.json())
-            if len(ret) == 0:
-                logger.debug("received empty response, returning")
-                break
-            logger.debug("yielding %s items", len(ret))
-            yield ret
-            current_page += 1
-
-    @staticmethod
-    def _response_to_object(
-        response: Response,
-        klass: object,
-        exc_handler: Callable[[Response], None],
-        check_status: bool = True,
-    ) -> list[object]:
-        if check_status and response.status_code != 200:
-            exc_handler(response)
-        ret = parse_obj_as(list[klass], response.json())
-        logger.debug("deserialized %s items", len(ret))
-        return ret
+    ) -> Iterator[list[T]]:
+        async for item in PaginatedResponse._get_all_parallel(
+            upstream=upstream,
+            klass=klass,
+            client=client,
+            user=user,
+            method=method,
+            per_page=per_page,
+            json=json,
+            max_concurrency=1,
+        ):
+            yield item
 
     @staticmethod
     def _check_and_warn_max_concurrency(max_concurrency: int):
@@ -193,17 +234,17 @@ class PaginatedResponse:
             )
 
     @staticmethod
-    async def _get_all_parallel_nowait(
+    async def _get_all_parallel(
         *,
         upstream: str,
-        klass: object,
+        klass: T,
         client: AsyncClient,
         user: User,
-        exc_handler: Callable[[Response], None],
+        method: str,
         per_page: int = PER_PAGE_DEFAULT,
         json=None,
         max_concurrency: int = MAX_CONCURRENT,
-    ) -> Iterator[object]:
+    ) -> Iterator[list[T]]:
         assert max_concurrency > 0, "max_concurrency must be greater than 0"
         # if this URL doesn't already have query parameters,
         # add the query parameter delimiter ("?") to it.
@@ -215,10 +256,19 @@ class PaginatedResponse:
         # Get the first page (index 0)
         url = f"{upstream}page=0&perPage={per_page}&count=true"
         logger.debug(f"fetching first request URL: {url}")
-        response = await client.request("GET", url, headers=user.bearer, json=json)
-        response_items = PaginatedResponse._response_to_object(
-            response, klass, exc_handler
+        (response, deserialized) = await _make_paginated_request(
+            client=client,
+            upstream=upstream,
+            pydantic_model=klass,
+            page=0,
+            per_page=per_page,
+            method=method,
+            headers=user.bearer,
+            json=json,
+            count=True,
         )
+        yield deserialized
+
         page_count: int = int(response.headers.get("repository-page-count"))
         item_count: int = int(response.headers.get("repository-item-count"))
         logger.debug(
@@ -229,7 +279,6 @@ class PaginatedResponse:
             POOL_EXECUTOR_SIZE,
         )
         # yield items from first request
-        yield response_items
         # check if there are no more pages
         if page_count <= 1:
             logger.debug("there are no more items, returning")
@@ -238,31 +287,19 @@ class PaginatedResponse:
         coroutines = []
 
         # Make the request and put the received data in the queue.
-        async def make_request_queued(
-            url: str,
-            headers: dict,
-            json: str,
-            queue: asyncio.Queue,
-            semaphore: asyncio.Semaphore,
-        ):
-            loop = asyncio.get_running_loop()
-            async with semaphore:
-                logger.debug("acquired semaphore: url: %s", url)
+        async def make_request_queued(sem: asyncio.Semaphore, page: int, **kwargs):
+            async with sem:
+                logger.debug("acquired semaphore N#: %s", page)
                 try:
-                    response = await client.request(
-                        "GET", url, headers=user.bearer, json=json
-                    )
-                    deserialized = await loop.run_in_executor(
-                        POOL_EXECUTOR, _deserialize_blocking, list[klass], response.text
+                    (response, deserialized) = await _make_paginated_request(
+                        page=page, **kwargs
                     )
                     await queue.put(deserialized)
                     logger.debug("%s: fetched %s items", url, len(deserialized))
                 except Exception as exc:
                     logger.error(
-                        "Couldn't fetch data (URL: %s, headers: %s, payload: %s)",
-                        url,
-                        headers,
-                        json,
+                        "Couldn't fetch data (kwargs: %s)",
+                        kwargs,
                         exc_info=exc,
                     )
                     await queue.put(QUEUE_SENTINEL)
@@ -270,19 +307,26 @@ class PaginatedResponse:
         queue = asyncio.Queue()
         semaphore = asyncio.Semaphore(max_concurrency)
 
-        for page in range(1, page_count):
-            # note: use "FAST" strategy from now on, since we now know the
-            # total number of pages.
-            url = f"{upstream}page={page}&perPage={per_page}&count=false"
-            coroutines.append(
-                make_request_queued(url, user.bearer, json, queue, semaphore)
+        coroutines = [
+            make_request_queued(
+                sem=semaphore,
+                page=page,
+                client=client,
+                upstream=upstream,
+                pydantic_model=klass,
+                per_page=per_page,
+                method=method,
+                headers=user.bearer,
+                json=json,
+                count=False,
             )
+            for page in range(1, page_count)
+        ]
 
-        # Schedule execution
-        async def run_concurrent():
+        async def schedule_coroutines():
             await asyncio.gather(*coroutines)
 
-        concurrent_tasks_fut = asyncio.create_task(run_concurrent())
+        concurrent_tasks_fut = asyncio.create_task(schedule_coroutines())
         logger.debug("%s coroutines have been fired off!", len(coroutines))
         received_pages_count = 1
 

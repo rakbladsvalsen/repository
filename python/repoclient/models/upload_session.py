@@ -7,7 +7,6 @@ from datetime import datetime
 from repoclient.models.user import User
 from repoclient.pagination import PaginatedResponse
 from repoclient.models.common import UserFormatFilter
-from repoclient.models.handler import RequestModel
 
 
 class UploadSessionQuery(UserFormatFilter):
@@ -69,13 +68,12 @@ class UploadSession(BaseModel):
         if query is not None:
             upstream += query.build_url(upstream)
 
-        proxy_handler = RequestModel()
         async for item in PaginatedResponse.get_all(
             upstream=upstream,
-            klass=UploadSession,
+            klass=list[UploadSession],
             client=client,
             user=user,
-            exc_handler=proxy_handler.handle_exception,
             **kwargs,
         ):
-            yield item
+            for it in item:
+                yield it
