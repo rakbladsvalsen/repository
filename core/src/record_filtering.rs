@@ -292,13 +292,16 @@ impl PreparedSearchQuery {
             .formats
             .par_iter()
             .flat_map(|m| &m.schema.0)
-            .try_fold(HashMap::new, |mut hsmap, col_schema| {
-                hsmap
-                    .entry(&col_schema.name)
-                    .or_insert_with(HashSet::new)
-                    .insert(&col_schema.kind);
-                Ok(hsmap)
-            })
+            .try_fold(
+                HashMap::new,
+                |mut hsmap: HashMap<_, HashSet<_>>, col_schema| {
+                    hsmap
+                        .entry(&col_schema.name)
+                        .or_default()
+                        .insert(&col_schema.kind);
+                    Ok(hsmap)
+                },
+            )
             .try_reduce(HashMap::new, |mut accum, item| {
                 for (column, column_kinds) in item {
                     if column_kinds.len() > 1 {
@@ -306,7 +309,7 @@ impl PreparedSearchQuery {
                             column.to_string(),
                         ));
                     }
-                    let entry = accum.entry(column).or_insert_with(HashSet::new);
+                    let entry = accum.entry(column).or_default();
                     entry.extend(column_kinds);
                     if entry.len() > 1 {
                         return Err(DatabaseQueryError::ColumnWithMixedTypesError(

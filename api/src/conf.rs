@@ -26,6 +26,8 @@ lazy_static! {
     pub static ref RETURN_QUERY_COUNT: bool = CONFIG.return_query_count;
     pub static ref MAX_JSON_PAYLOAD_SIZE: usize = CONFIG.max_json_payload_size as usize;
     pub static ref DB_ACQUIRE_CONNECTION_TIMEOUT_SEC: usize = CONFIG.db_acquire_connection_timeout_sec as usize;
+    pub static ref DB_CSV_STREAM_WORKERS: usize = CONFIG.db_csv_stream_workers as usize;
+    pub static ref DB_CSV_WORKER_QUEUE_DEPTH: usize = CONFIG.db_csv_worker_queue_depth as usize;
 }
 
 fn get_coding_keys(key: &String) -> Result<(EncodingKey, DecodingKey), Box<dyn Error>> {
@@ -90,6 +92,12 @@ pub struct Config {
 
     #[envconfig(from = "DB_ACQUIRE_CONNECTION_TIMEOUT_SEC", default = "30")]
     pub db_acquire_connection_timeout_sec: u64,
+
+    #[envconfig(from = "DB_CSV_STREAM_WORKERS", default = "4")]
+    pub db_csv_stream_workers: u64,
+
+    #[envconfig(from = "DB_CSV_WORKER_QUEUE_DEPTH", default = "200")]
+    pub db_csv_worker_queue_depth: u64,
 }
 
 impl Config {
@@ -121,6 +129,15 @@ impl Config {
         }
         if self.max_json_payload_size == 0 {
             return Err("MAX_JSON_PAYLOAD_SIZE must be greater than 0".into());
+        }
+        if self.db_acquire_connection_timeout_sec == 0 {
+            return Err("DB_ACQUIRE_CONNECTION_TIMEOUT_SEC must be greater than 0".into());
+        }
+        if self.db_csv_stream_workers == 0 {
+            return Err("DB_CSV_STREAM_WORKERS must be greater than 0".into());
+        }
+        if self.db_csv_worker_queue_depth == 0 {
+            return Err("DB_CSV_WORKER_QUEUE_DEPTH must be greater than 0".into());
         }
         Ok(())
     }
