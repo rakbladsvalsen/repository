@@ -12,8 +12,8 @@ use log::{debug, error, info};
 use rayon::prelude::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use sea_orm::{
     sea_query::{extension::postgres::PgBinOper, Alias, BinOper, Expr, Query},
-    ColumnTrait, Condition, DbConn, EntityTrait, ModelTrait, QueryFilter, QuerySelect, QueryTrait,
-    RelationTrait,
+    ColumnTrait, Condition, ConnectionTrait, EntityTrait, ModelTrait, QueryFilter, QuerySelect,
+    QueryTrait, RelationTrait, StreamTrait,
 };
 use sea_query::{IntoCondition, JoinType, SimpleExpr};
 use serde::*;
@@ -239,10 +239,10 @@ impl SearchQuery {
         }
     }
 
-    pub async fn get_readable_formats_for_user(
+    pub async fn get_readable_formats_for_user<C: ConnectionTrait + StreamTrait + 'static>(
         self,
         user: &user::Model,
-        db: &DbConn,
+        db: &C,
     ) -> Result<PreparedSearchQuery, DatabaseQueryError> {
         // filter formats for this user.
         let mut filtered_formats = match user.is_superuser {

@@ -27,8 +27,9 @@ This app provides some knobs that allow you to tune and configure it via environ
 | `RETURN_QUERY_COUNT`                 | No        | Whether to return or not item and page counts for all queries. Set to `true` by default.     |
 | `MAX_JSON_PAYLOAD_SIZE`              | No        | Max JSON payload size for any incoming request. Set to `100000` (100kB) by default.          |
 | `DB_ACQUIRE_CONNECTION_TIMEOUT_SEC`  | No        | Acquire connection timeout (in seconds). Set to `30`s by default.                            |
-| `DB_CSV_STREAM_WORKERS`              | No        | N# of workers to use when converting db output to csv. Set to `4` by default.                |
-| `DB_CSV_WORKER_QUEUE_DEPTH`          | No        | Max N# of items to put in the worker queue for CSV downloads. Set to `500` by default.       |
+| `DB_CSV_STREAM_WORKERS`              | No        | N# of database streams (and workers) to use when streaming DB data. Set to `1` by default.   |
+| `DB_CSV_TRANSFORM_WORKERS`           | No        | N# of workers to use to process the DB stream data. Set to `2` by default.                   |
+| `DB_CSV_WORKER_QUEUE_DEPTH`          | No        | Max N# of items to put in the worker queue for CSV downloads. Set to `200` by default.       |
 
 
 Note ¹: This key can be generated with openssl:

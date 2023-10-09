@@ -1,7 +1,8 @@
-use std::pin::Pin;
+use std::sync::Arc;
 
 use crate::{
     pagination_impl::GetAllTrait, GetAllPaginated, PaginationOptions, PreparedSearchQuery,
+    SearchQuery,
 };
 use ::entity::{
     error::DatabaseQueryError,
@@ -11,8 +12,9 @@ use ::entity::{
     record, upload_session, user,
     user::Entity as User,
 };
-use futures::Stream;
-use log::info;
+use async_stream::stream;
+use futures::{Stream, StreamExt};
+use log::{debug, info};
 use sea_orm::*;
 
 // Query objects
@@ -53,6 +55,24 @@ impl GetAllTrait<'_> for RecordQuery {
     type Entity = record::Entity;
 }
 
+pub struct ParallelStreamConfig {
+    num_streams: usize,
+    num_queue_items: usize,
+    num_transform_threads: usize,
+}
+
+impl ParallelStreamConfig {
+    pub fn new(num_streams: usize, num_queue_items: usize, num_transform_threads: usize) -> Self {
+        Self {
+            num_streams,
+            num_queue_items,
+            num_transform_threads,
+        }
+    }
+}
+
+const FIXED_HEADERS: &str = r#""ID","FormatId","UploadSessionId""#;
+
 // Custom impl's for weird usecases.
 
 impl RecordQuery {
@@ -78,19 +98,110 @@ impl RecordQuery {
 
     pub async fn filter_readable_records_stream<C: ConnectionTrait + StreamTrait + 'static>(
         db: &'static C,
+        auth: user::Model,
         filters: &record::ModelAsQuery,
-        prepared_search: PreparedSearchQuery,
-    ) -> Result<
-        Pin<Box<dyn Stream<Item = Result<record::Model, sea_orm::DbErr>> + Send + 'static>>,
-        DatabaseQueryError,
-    > {
-        // let extra_condition = prepared_search.build_condition()?;
-        let select = record::Entity::find().order_by_asc(record::Column::Id);
-        let select = prepared_search.apply_condition(select)?;
+        query: SearchQuery,
+        parallel_stream_config: ParallelStreamConfig,
+    ) -> Result<impl Stream<Item = Vec<u8>>, DatabaseQueryError> {
+        let prepared_search = query.get_readable_formats_for_user(&auth, db).await?;
+        let schema_columns = Arc::new(prepared_search.schema_columns());
 
-        RecordQuery::get_all_as_stream(db, filters, Some(select))
-            .await
-            .map_err(DatabaseQueryError::from)
+        let mut headers = schema_columns
+            .iter()
+            .map(|col| format!("{:?}", col))
+            .collect::<Vec<_>>()
+            .join(",");
+        headers = format!("{FIXED_HEADERS},{headers}\n");
+
+        // apply conditions and filters.
+        let mut select = record::Entity::find().order_by_asc(record::Column::Id);
+        select = prepared_search.apply_condition(select)?;
+        select = RecordQuery::apply_filters(filters, Some(select));
+
+        let mut limit = None;
+
+        // If there's only 1 stream, it doesn't make sense to use multiple database streams,
+        // and therefore it doesn't make any sense to issue a COUNT query.
+        if parallel_stream_config.num_streams > 1 {
+            debug!(
+                "streaming: using {} streams, now waiting for COUNT",
+                parallel_stream_config.num_streams
+            );
+            let num_items = RecordQuery::num_items(db, &mut (select.clone())).await?;
+            limit =
+                Some((num_items as f64 / parallel_stream_config.num_streams as f64).ceil() as u64); // page size
+            debug!(
+                "streaming: COUNT returned {} items / {} streams = {:?} items per page",
+                num_items, parallel_stream_config.num_streams, limit
+            );
+        } else {
+            debug!("streaming: not issuing COUNT as there's only 1 stream");
+        }
+
+        let (tx_db_stream, rx_db_stream) = flume::bounded(parallel_stream_config.num_queue_items);
+        let (tx_result, rx_result) = flume::bounded(parallel_stream_config.num_queue_items);
+
+        // Spawn receiving threads
+        for stream_thread in 0..parallel_stream_config.num_streams {
+            let offset = stream_thread as u64 * limit.unwrap_or(0);
+            let thread_select = select.clone().limit(limit).offset(offset);
+            debug!("stream worker {stream_thread}: offset: {offset} limit: {limit:?}");
+            let thread_tx_db_stream = tx_db_stream.clone();
+            tokio::spawn(async move {
+                let mut received = 0;
+                let mut stream = thread_select.stream(db).await?;
+                while let Some(Ok(item)) = stream.next().await {
+                    received += 1;
+                    if thread_tx_db_stream.send_async(item).await.is_err() {
+                        break;
+                    }
+                }
+                debug!("stream_thread: {stream_thread}: received {received} items");
+                Ok::<_, DatabaseQueryError>(())
+            });
+        }
+        drop(tx_db_stream);
+
+        for transform_thread in 0..parallel_stream_config.num_transform_threads {
+            let rx_db_stream_thread = rx_db_stream.clone();
+            let tx_result_thread = tx_result.clone();
+            let schema_columns_thread = schema_columns.clone();
+            tokio::spawn(async move {
+                let mut processed = 0;
+                while let Ok(item) = rx_db_stream_thread.recv_async().await {
+                    processed += 1;
+                    let mut row = schema_columns_thread
+                        .iter()
+                        .map(|column| {
+                            item.data
+                                .get(column)
+                                .map_or("".into(), |value| format!("{}", value))
+                        })
+                        .collect::<Vec<_>>()
+                        .join(",");
+                    // Build CSV row.
+                    row = format!(
+                        "{},{},{},{row}\n",
+                        item.id, item.format_id, item.upload_session_id
+                    );
+                    if tx_result_thread.send_async(row.into_bytes()).await.is_err() {
+                        break;
+                    }
+                }
+                debug!("transform_thread {transform_thread}: processed {processed} items");
+                Ok::<_, DatabaseQueryError>(())
+            });
+        }
+        drop(tx_result);
+        drop(rx_db_stream);
+
+        Ok(stream!({
+            yield headers.into_bytes();
+
+            while let Ok(item) = rx_result.recv_async().await {
+                yield item;
+            }
+        }))
     }
 }
 

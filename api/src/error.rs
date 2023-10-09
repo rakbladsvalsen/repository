@@ -5,7 +5,6 @@ use actix_web::{
     HttpResponse,
 };
 use central_repository_dao::error::DatabaseQueryError;
-use flume::SendError;
 use log::{error, info};
 use sea_orm::{DbErr, RuntimeErr};
 use serde::Serialize;
@@ -107,12 +106,6 @@ impl From<DatabaseQueryError> for APIError {
             DatabaseQueryError::NestedDBError(err) => APIError::from(err),
             _ => APIError::InvalidQuery(value.to_string()),
         }
-    }
-}
-
-impl<T> From<SendError<T>> for APIError {
-    fn from(_: SendError<T>) -> APIError {
-        APIError::ServerError
     }
 }
 

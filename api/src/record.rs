@@ -1,17 +1,19 @@
 use crate::{
     common::{timed, DebugMode},
-    conf::{BULK_INSERT_CHUNK_SIZE, DB_CSV_STREAM_WORKERS, DB_CSV_WORKER_QUEUE_DEPTH, DB_POOL},
+    conf::{
+        BULK_INSERT_CHUNK_SIZE, DB_CSV_STREAM_WORKERS, DB_CSV_TRANSFORM_WORKERS,
+        DB_CSV_WORKER_QUEUE_DEPTH, DB_POOL,
+    },
     core_middleware::auth::AuthMiddleware,
     error::{APIError, APIResult, AsAPIResult},
     pagination::{APIPager, PaginatedResponse},
     record_validation::InboundRecordData,
 };
-use async_stream::stream;
 use central_repository_dao::{
     record::ModelAsQuery, upload_session::OutcomeKind, user::Model as UserModel, FormatQuery,
-    RecordMutation, RecordQuery, SearchQuery, UploadSessionMutation, UserQuery,
+    ParallelStreamConfig, RecordMutation, RecordQuery, SearchQuery, UploadSessionMutation,
+    UserQuery,
 };
-use std::sync::Arc;
 
 use actix_web::{
     post,
@@ -23,8 +25,6 @@ use entity::upload_session::Model as UploadSessionModel;
 use futures::{future::join_all, StreamExt};
 use log::{debug, error, info};
 use rayon::{prelude::*, slice::ParallelSlice};
-
-const FIXED_HEADERS: &str = r#""ID","FormatId","UploadSessionId""#;
 
 #[post("/filter")]
 async fn get_all_filtered_records(
@@ -70,85 +70,18 @@ async fn get_all_filtered_records_stream(
         info!("accessed debugging interface");
         return HttpResponse::Ok().json(query).to_ok();
     }
-    let prepared_search = query.get_readable_formats_for_user(&auth, db).await?;
-    let schema_columns = Arc::new(prepared_search.schema_columns());
 
-    let mut iterator =
-        RecordQuery::filter_readable_records_stream(db, &filter, prepared_search).await?;
+    let config = ParallelStreamConfig::new(
+        *DB_CSV_STREAM_WORKERS,
+        *DB_CSV_WORKER_QUEUE_DEPTH,
+        *DB_CSV_TRANSFORM_WORKERS,
+    );
 
-    let (tx_model, rx_model) = flume::bounded(*DB_CSV_WORKER_QUEUE_DEPTH);
-    let (tx_result, rx_result) = flume::bounded(*DB_CSV_WORKER_QUEUE_DEPTH);
+    let stream =
+        RecordQuery::filter_readable_records_stream(db, auth.into_inner(), &filter, query, config)
+            .await?
+            .map(|it| Ok::<_, APIError>(web::Bytes::from(it)));
 
-    // Process database results in parallel.
-    //
-    // A database stream can easily overwhelm a single core when we're
-    // converting the results to a CSV-compatible format. This stream
-    // will spawn several worker threads that receive that data in parallel
-    // and then yield that data.
-    //
-    // See the diagram below for more details.
-    //
-    //                 -> Worker 1/CSV out->
-    //  DB stream ---> -> Worker 2/CSV out -> ---> Unordered CSV stream
-    //                 -> Worker 3/CSV out ->
-
-    // DB_CSV_STREAM_WORKERS
-    let stream = stream! {
-        let headers = schema_columns
-            .iter()
-            .map(|col| format!("{:?}", col))
-            .collect::<Vec<_>>()
-            .join(",");
-
-
-        // Yield CSV headers
-        yield Ok::<_, APIError>(web::Bytes::from(format!("{FIXED_HEADERS},{headers}\n")));
-
-        // Relay database data in another thread
-        tokio::spawn(async move{
-            while let Some(Ok(item)) = iterator.next().await{
-                tx_model.send_async(item).await?;
-            }
-            Ok::<_, APIError>(())
-        });
-
-        // Receive database data in multiple threads and convert it to csv.
-        for worker in 0..(*DB_CSV_STREAM_WORKERS) {
-            let rx_model_thread = rx_model.clone();
-            let tx_result_thread = tx_result.clone();
-            let schema_columns_thread = schema_columns.clone();
-
-            tokio::spawn(async move {
-                let mut processed = 0;
-                while let Ok(item) = rx_model_thread.recv_async().await {
-                    processed += 1;
-                    let row = schema_columns_thread
-                        .iter()
-                        .map(|column| {
-                            item.data
-                                .get(column)
-                                .map_or("".into(), |value| format!("{}", value))
-                        })
-                        .collect::<Vec<_>>()
-                        .join(",");
-                    tx_result_thread
-                        .send_async(format!(
-                            "{},{},{},{row}\n",
-                            item.id, item.format_id, item.upload_session_id
-                        ))
-                        .await?;
-                }
-                info!("worker {worker}: processed {processed} items");
-                Ok::<_, APIError>(())
-            });
-        }
-        // we don't need the rx_model and tx_result halves from outside the worker threads
-        drop(rx_model);
-        drop(tx_result);
-        while let Ok(item) = rx_result.recv_async().await{
-            yield Ok::<_, APIError>(web::Bytes::from(item));
-        }
-    };
     HttpResponse::Ok()
         .append_header(("Content-Type", "text/csv"))
         .streaming(stream)

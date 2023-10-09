@@ -27,6 +27,30 @@ pub struct PaginationOptions {
 
 #[async_trait]
 pub trait GetAllPaginated<'db>: GetAllTrait<'db> {
+    /// Get total number of items in this query.
+    #[inline(always)]
+    async fn num_items<C: ConnectionTrait>(
+        db: &C,
+        select: &mut sea_orm::Select<Self::Entity>,
+    ) -> Result<u64, DbErr> {
+        let stmt = SelectStatement::new()
+            .expr(Expr::cust("COUNT (*) AS num_items"))
+            .from_subquery(
+                sea_orm::QueryTrait::query(select).to_owned(),
+                Alias::new("sub_query"),
+            )
+            .to_owned();
+
+        let stmt = StatementBuilder::build(&stmt, &sea_orm::DatabaseBackend::Postgres);
+
+        let result = db.query_all(stmt).await?;
+        let result = match result.get(0) {
+            Some(i) => i,
+            _ => return Ok(0),
+        };
+        Ok(result.try_get::<i64>("", "num_items")? as u64)
+    }
+
     /// Get number of items and pages.
     /// There's already a built-in SeaORM method with the same name
     /// (num_items_and _pages) but it has a weird bug for some reason
@@ -36,32 +60,18 @@ pub trait GetAllPaginated<'db>: GetAllTrait<'db> {
     ///
     /// Returns a tuple, containing:
     /// - (Total number of pages, total number of items)
+    #[inline(always)]
     async fn num_items_and_pages<C: ConnectionTrait>(
         db: &C,
         select: &mut sea_orm::Select<Self::Entity>,
         page_size: u64,
     ) -> Result<(u64, u64), DbErr> {
-        let select = SelectStatement::new()
-            .expr(Expr::cust("COUNT (*) AS num_items"))
-            .from_subquery(
-                sea_orm::QueryTrait::query(select).to_owned(),
-                Alias::new("sub_query"),
-            )
-            .to_owned();
-
-        let stmt = StatementBuilder::build(&select, &sea_orm::DatabaseBackend::Postgres);
-
-        let result = db.query_all(stmt).await?;
-        let result = match result.get(0) {
-            Some(i) => i,
-            _ => return Ok((0, 0)),
-        };
-        let num_items = result.try_get::<i64>("", "num_items")?;
+        let num_items = Self::num_items(db, select).await?;
         let num_pages = (num_items as f64 / page_size as f64).ceil() as u64;
-        Ok((num_pages, num_items as u64))
+        Ok((num_pages, num_items))
     }
 
-    fn prepare_select(
+    fn apply_filters(
         filters: &Self::FilterQueryModel,
         select_stmt: Option<sea_orm::Select<Self::Entity>>,
     ) -> Select<Self::Entity> {
@@ -86,7 +96,7 @@ pub trait GetAllPaginated<'db>: GetAllTrait<'db> {
         select_stmt: Option<sea_orm::Select<Self::Entity>>,
     ) -> Result<Pin<Box<dyn Stream<Item = ResultModel<Self::ResultModel>> + Send + 'db>>, DbErr>
     {
-        let select = Self::prepare_select(filters, select_stmt);
+        let select = Self::apply_filters(filters, select_stmt);
         Ok(select.stream(db).await.map(Box::pin)?)
     }
 
@@ -99,7 +109,7 @@ pub trait GetAllPaginated<'db>: GetAllTrait<'db> {
         order_by: O,
     ) -> Result<(Vec<Self::ResultModel>, u64, u64), DbErr> {
         debug!("pagination options: {:#?}", pagination_options);
-        let mut select = Self::prepare_select(filters, select_stmt);
+        let mut select = Self::apply_filters(filters, select_stmt);
         let select_ordered = select.clone().order_by_asc(order_by);
 
         // Create paginators.
