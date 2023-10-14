@@ -5,6 +5,7 @@ use crate::{
     SearchQuery,
 };
 use ::entity::{
+    api_key,
     error::DatabaseQueryError,
     format,
     format::Entity as Format,
@@ -16,6 +17,7 @@ use async_stream::stream;
 use futures::{Stream, StreamExt};
 use log::{debug, info};
 use sea_orm::*;
+use uuid::Uuid;
 
 // Query objects
 pub struct UploadSessionQuery;
@@ -23,6 +25,8 @@ pub struct FormatEntitlementQuery;
 pub struct FormatQuery;
 pub struct UserQuery;
 pub struct RecordQuery;
+
+pub struct ApiKeyQuery;
 
 // Implement get_all for all of them
 impl GetAllTrait<'_> for UserQuery {
@@ -53,6 +57,12 @@ impl GetAllTrait<'_> for RecordQuery {
     type FilterQueryModel = record::ModelAsQuery;
     type ResultModel = record::Model;
     type Entity = record::Entity;
+}
+
+impl GetAllTrait<'_> for ApiKeyQuery {
+    type FilterQueryModel = api_key::ModelAsQuery;
+    type ResultModel = api_key::Model;
+    type Entity = api_key::Entity;
 }
 
 pub struct ParallelStreamConfig {
@@ -328,5 +338,64 @@ impl UploadSessionQuery {
             upload_session::Column::CreatedAt,
         )
         .await
+    }
+}
+
+impl ApiKeyQuery {
+    pub async fn get_all_for_user<C: ConnectionTrait>(
+        db: &C,
+        filters: &api_key::ModelAsQuery,
+        pager: &PaginationOptions,
+        user: user::Model,
+    ) -> Result<(Vec<api_key::Model>, u64, u64), DbErr> {
+        let mut select_stmt = None;
+        if !user.is_superuser {
+            info!("filtering available keys for user {:?}", user.id);
+            select_stmt = Some(api_key::Entity::find().filter(api_key::Column::UserId.eq(user.id)));
+        }
+        ApiKeyQuery::get_all(db, filters, pager, select_stmt, api_key::Column::CreatedAt).await
+    }
+
+    /// Get the user associated with the given `user_id` and all its related
+    /// keys.
+    pub async fn get_user_and_keys<C: ConnectionTrait>(
+        db: &C,
+        user_id: Uuid,
+    ) -> Result<Option<(user::Model, Vec<api_key::Model>)>, DbErr> {
+        let mut first = user::Entity::find_by_id(user_id)
+            .find_with_related(api_key::Entity)
+            .all(db)
+            .await?;
+        if first.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(first.remove(0)))
+    }
+
+    /// Get the user associated with the given `user_id` and the related key.
+    pub async fn get_user_and_single_key<C: ConnectionTrait>(
+        db: &C,
+        user_id: Uuid,
+        key_id: Uuid,
+    ) -> Result<Option<(user::Model, api_key::Model)>, DbErr> {
+        let mut first = user::Entity::find_by_id(user_id)
+            .find_with_related(api_key::Entity)
+            .filter(api_key::Column::Id.eq(key_id))
+            .all(db)
+            .await?;
+        if first.is_empty() {
+            return Ok(None);
+        }
+        let (user, mut key) = first.remove(0);
+        debug!(
+            "api key query returned {} key(s) for user {}",
+            key.len(),
+            user.id
+        );
+        // if `key` doesn't have anything, then the passed key does not exist.
+        if key.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some((user, key.remove(0))))
     }
 }

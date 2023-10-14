@@ -13,7 +13,7 @@ use log::info;
 use crate::{
     conf::DB_POOL,
     core_middleware::auth::AuthMiddleware,
-    error::{APIError, APIResult, AsAPIResult},
+    error::{APIError, APIResponse, AsAPIResult},
     pagination::{APIPager, PaginatedResponse},
     util::verify_admin,
 };
@@ -23,7 +23,7 @@ async fn get_all_format(
     pager: Query<APIPager>,
     filter: Query<ModelAsQuery>,
     user: ReqData<User>,
-) -> APIResult {
+) -> APIResponse {
     let db = DB_POOL.get().expect("database is not initialized");
     pager.validate()?;
     let filter = filter.into_inner();
@@ -36,7 +36,7 @@ async fn get_all_format(
 }
 
 #[get("{id}")]
-async fn get_format(id: Option<Path<i32>>) -> APIResult {
+async fn get_format(id: Option<Path<i32>>) -> APIResponse {
     let db = DB_POOL.get().expect("database is not initialized");
     let id = *id.ok_or(APIError::BadRequest)?;
     let format = FormatQuery::find_by_id(db, id)
@@ -46,7 +46,7 @@ async fn get_format(id: Option<Path<i32>>) -> APIResult {
 }
 
 #[delete("{id}")]
-async fn delete_format(id: Option<Path<i32>>, user: ReqData<User>) -> APIResult {
+async fn delete_format(id: Option<Path<i32>>, user: ReqData<User>) -> APIResponse {
     verify_admin(&user)?;
     let db = DB_POOL.get().expect("database is not initialized");
     let id = *id.ok_or(APIError::BadRequest)?;
@@ -56,7 +56,7 @@ async fn delete_format(id: Option<Path<i32>>, user: ReqData<User>) -> APIResult 
 }
 
 #[post("")]
-async fn create_format(inbound: Json<FormatModel>, user: ReqData<User>) -> APIResult {
+async fn create_format(inbound: Json<FormatModel>, user: ReqData<User>) -> APIResponse {
     let db = DB_POOL.get().expect("database is not initialized");
     verify_admin(&user)?;
     let outbound = FormatMutation::create(db, inbound.into_inner()).await?;

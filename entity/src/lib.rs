@@ -1,3 +1,4 @@
+pub mod api_key;
 pub mod error;
 pub mod format;
 pub mod format_entitlement;

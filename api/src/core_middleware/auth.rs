@@ -9,6 +9,10 @@ lazy_static! {
     static ref BEARER: &'static str = "Bearer ";
 }
 
+// This middleware authenticates any incoming request
+// containing a Bearer: Token.
+// The token can be of any type: it gets passed through to the
+// validation function.
 create_middleware!(
     AuthMiddleware,
     AuthMiddlewareInner,
@@ -45,11 +49,10 @@ create_middleware!(
             let token = Token::from(token);
 
             // handle token validation
-            let user = token.validate(db).await;
-            if let Err(err) = user {
-                return Ok(req.error_response(err).into());
-            }
-            let user = user.unwrap();
+            let user = match token.validate(db).await {
+                Err(err) => return Ok(req.error_response(err).into()),
+                Ok(user) => user,
+            };
 
             // add authenticated user to logging span
             // note: we need to drop `extensions` to use `req` again

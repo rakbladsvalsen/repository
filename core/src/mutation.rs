@@ -1,4 +1,5 @@
 use ::entity::{
+    api_key,
     error::DatabaseQueryError,
     format,
     format::{ColumnKind, Entity as Format},
@@ -7,6 +8,7 @@ use ::entity::{
     upload_session::{self, OutcomeKind},
     user,
 };
+use log::info;
 use regex::Regex;
 use sea_orm::*;
 use uuid::Uuid;
@@ -132,5 +134,47 @@ impl FormatEntitlementMutation {
         format_entitlement::ActiveModel::from(model)
             .insert(db)
             .await
+    }
+}
+
+pub struct ApiKeyMutation;
+
+impl ApiKeyMutation {
+    pub async fn delete(db: &DbConn, model: api_key::Model) -> Result<(), DbErr> {
+        api_key::Entity::delete_by_id(model.id)
+            .exec(db)
+            .await
+            .map(|_| ())
+    }
+
+    /// Create an API Key for this user.
+    pub async fn create_for_user(db: &DbConn, user: &user::Model) -> Result<api_key::Model, DbErr> {
+        let now = chrono::offset::Utc::now();
+        api_key::ActiveModel {
+            user_id: Set(user.id),
+            created_at: Set(now),
+            last_rotated_at: Set(now),
+            active: Set(true),
+            id: Set(Uuid::new_v4()),
+        }
+        .insert(db)
+        .await?
+        .try_into_model()
+    }
+
+    pub async fn update(
+        db: &DbConn,
+        old: api_key::Model,
+        new: api_key::UpdatableModel,
+    ) -> Result<api_key::Model, DbErr> {
+        let mut model = old.into_active_model();
+        // User enabled 'rotate' option, so let's just rotate this api key.
+        if new.rotate.unwrap_or(false) {
+            let now = chrono::offset::Utc::now();
+            info!("rotating key with ID: {:?}: {:?}", model.id, now);
+            model.last_rotated_at = Set(now);
+        }
+        model.active = new.active.map(Set).unwrap_or(NotSet);
+        model.update(db).await
     }
 }

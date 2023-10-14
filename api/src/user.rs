@@ -1,9 +1,10 @@
 use crate::{
+    api_key::{create_api_key, delete_api_key, get_all_api_keys, update_api_key},
+    auth::hashing::UserPassword,
     auth::jwt::Token,
-    auth::password::UserPassword,
     conf::{DB_POOL, PROTECT_SUPERUSER},
     core_middleware::auth::AuthMiddleware,
-    error::{APIError, APIResult, AsAPIResult},
+    error::{APIError, APIResponse, AsAPIResult},
     model_prepare::DBPrepare,
     pagination::{APIPager, PaginatedResponse},
     util::verify_admin,
@@ -30,7 +31,7 @@ pub struct LoginCredentials {
 }
 
 #[post("")]
-async fn create_user(user: Json<UserModel>, auth: ReqData<UserModel>) -> APIResult {
+async fn create_user(user: Json<UserModel>, auth: ReqData<UserModel>) -> APIResponse {
     verify_admin(&auth)?;
     let db = DB_POOL.get().expect("database is not initialized");
     let mut user = user.into_inner();
@@ -51,7 +52,7 @@ async fn get_all_users(
     pager: Query<APIPager>,
     filter: Query<ModelAsQuery>,
     auth: ReqData<UserModel>,
-) -> APIResult {
+) -> APIResponse {
     let db = DB_POOL.get().expect("database is not initialized");
     pager.validate()?;
     verify_admin(&auth)?;
@@ -63,7 +64,7 @@ async fn get_all_users(
 }
 
 #[post("")]
-async fn login(inbound: Json<LoginCredentials>) -> APIResult {
+async fn login(inbound: Json<LoginCredentials>) -> APIResponse {
     let db = DB_POOL.get().expect("database is not initialized");
     let inbound = inbound.into_inner();
     let user = UserQuery::find_by_username(db, &inbound.username)
@@ -79,14 +80,14 @@ async fn login(inbound: Json<LoginCredentials>) -> APIResult {
     Ok(web::block(move || {
         let _guard = current_span.enter();
         UserPassword::verify_password(&inbound.password, &user.password)
-            .and_then(|_| Token::build(user))
+            .and_then(|_| Token::build_from_user(user))
     })
     .await??
     .into())
 }
 
 #[get("{id}")]
-async fn get_user(id: Path<Uuid>, auth: ReqData<UserModel>) -> APIResult {
+async fn get_user(id: Path<Uuid>, auth: ReqData<UserModel>) -> APIResponse {
     let db = DB_POOL.get().expect("database is not initialized");
     let id = id.into_inner();
     if !auth.is_superuser && auth.id != id {
@@ -100,7 +101,7 @@ async fn get_user(id: Path<Uuid>, auth: ReqData<UserModel>) -> APIResult {
 }
 
 #[delete("{id}")]
-async fn delete_user(id: Path<Uuid>, auth: ReqData<UserModel>) -> APIResult {
+async fn delete_user(id: Path<Uuid>, auth: ReqData<UserModel>) -> APIResponse {
     verify_admin(&auth)?;
     let db = DB_POOL.get().expect("database is not initialized");
     let id = id.into_inner();
@@ -126,7 +127,7 @@ async fn delete_user(id: Path<Uuid>, auth: ReqData<UserModel>) -> APIResult {
 }
 
 #[get("/self")]
-async fn get_self(auth: ReqData<UserModel>) -> APIResult {
+async fn get_self(auth: ReqData<UserModel>) -> APIResponse {
     let user = auth.into_inner();
     HttpResponse::Ok().json(user).to_ok()
 }
@@ -136,7 +137,7 @@ async fn update_user(
     id: Path<Uuid>,
     user: Json<UpdatableModel>,
     auth: ReqData<UserModel>,
-) -> APIResult {
+) -> APIResponse {
     let db = DB_POOL.get().expect("database is not initialized");
     if !auth.is_superuser && auth.id != *id {
         info!("non-superuser attempted to update another user");
@@ -157,7 +158,7 @@ async fn update_user(
 }
 
 #[get("")]
-async fn healthcheck() -> APIResult {
+async fn healthcheck() -> APIResponse {
     info!("healthcheck ping");
     let response = json!({"status": "200"});
     Ok(HttpResponse::Ok().json(response))
@@ -168,12 +169,17 @@ pub fn init_user_routes(cfg: &mut web::ServiceConfig) {
     let health_scope = web::scope("/healthcheck").service(healthcheck);
     let user_scope = web::scope("/user")
         .wrap(AuthMiddleware)
+        .service(get_all_api_keys)
         .service(get_self)
         .service(get_all_users)
         .service(create_user)
         .service(delete_user)
         .service(update_user)
-        .service(get_user);
+        .service(get_user)
+        .service(update_api_key)
+        .service(create_api_key)
+        .service(delete_api_key);
+
     cfg.service(health_scope);
     cfg.service(login_scope);
     cfg.service(user_scope);

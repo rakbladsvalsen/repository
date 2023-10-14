@@ -5,7 +5,7 @@ use crate::{
         DB_CSV_WORKER_QUEUE_DEPTH, DB_POOL,
     },
     core_middleware::auth::AuthMiddleware,
-    error::{APIError, APIResult, AsAPIResult},
+    error::{APIError, APIResponse, AsAPIResult},
     pagination::{APIPager, PaginatedResponse},
     record_validation::InboundRecordData,
 };
@@ -33,7 +33,7 @@ async fn get_all_filtered_records(
     auth: ReqData<UserModel>,
     query: Json<SearchQuery>,
     debug: actix_web::web::Query<DebugMode>,
-) -> APIResult {
+) -> APIResponse {
     query.validate()?;
     let db = DB_POOL.get().expect("database is not initialized");
     // get this query's inner contents
@@ -60,7 +60,7 @@ async fn get_all_filtered_records_stream(
     auth: ReqData<UserModel>,
     query: Json<SearchQuery>,
     debug: actix_web::web::Query<DebugMode>,
-) -> APIResult {
+) -> APIResponse {
     query.validate()?;
     // get this query's inner contents
     let query = query.into_inner();
@@ -89,7 +89,7 @@ async fn get_all_filtered_records_stream(
 }
 
 #[post("")]
-async fn create_record(inbound: Json<InboundRecordData>, auth: ReqData<UserModel>) -> APIResult {
+async fn create_record(inbound: Json<InboundRecordData>, auth: ReqData<UserModel>) -> APIResponse {
     let db = DB_POOL.get().expect("database is not initialized");
     let auth = auth.into_inner();
     let request_item_length = inbound.data.len() as i32;

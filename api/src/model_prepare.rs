@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use central_repository_dao::user::{Model as UserModel, UpdatableModel};
 
-use crate::{auth::password::UserPassword, error::APIError};
+use crate::{auth::hashing::UserPassword, error::APIError};
 
 #[async_trait]
 pub trait DBPrepare {

@@ -15,7 +15,9 @@ use thiserror::Error;
 
 use crate::{common::handle_fatal, conf::MAX_JSON_PAYLOAD_SIZE};
 
-pub type APIResult = Result<HttpResponse, APIError>;
+pub type APIResult<T> = Result<T, APIError>;
+
+pub type APIResponse = APIResult<HttpResponse>;
 
 #[derive(Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -54,6 +56,8 @@ pub enum APIError {
     NotFound(String),
     #[error("Cannot authenticate: user is inactive")]
     InactiveUser,
+    #[error("Cannot authenticate: key is inactive")]
+    InactiveKey,
     #[error("Invalid credentials.")]
     InvalidCredentials,
     #[error("Invalid or expired token.")]
@@ -95,6 +99,7 @@ impl APIError {
             Self::CastError(_, _) => StatusCode::BAD_REQUEST,
             Self::InvalidPageSize(_) => StatusCode::BAD_REQUEST,
             Self::InactiveUser => StatusCode::UNAUTHORIZED,
+            Self::InactiveKey => StatusCode::UNAUTHORIZED,
         }
     }
 }
@@ -159,7 +164,7 @@ impl error::ResponseError for APIError {
     }
 }
 
-impl From<APIError> for APIResult {
+impl From<APIError> for APIResponse {
     fn from(value: APIError) -> Self {
         Err(value)
     }
@@ -190,7 +195,7 @@ pub fn path_error_handler() -> PathConfig {
 }
 
 pub trait AsAPIResult {
-    fn to_ok(self) -> APIResult;
+    fn to_ok(self) -> APIResponse;
 }
 
 impl AsAPIResult for HttpResponse {
@@ -198,7 +203,7 @@ impl AsAPIResult for HttpResponse {
     /// APIResult. It is not possible to implement
     /// From<HttpResponse> for APIResult, so we're using
     /// this as a workaround.
-    fn to_ok(self) -> APIResult {
+    fn to_ok(self) -> APIResponse {
         Ok(self)
     }
 }

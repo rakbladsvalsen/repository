@@ -1,7 +1,7 @@
 use crate::{
     conf::DB_POOL,
     core_middleware::auth::AuthMiddleware,
-    error::{APIError, APIResult, AsAPIResult},
+    error::{APIError, APIResponse, AsAPIResult},
     pagination::{APIPager, PaginatedResponse},
     util::verify_admin,
 };
@@ -23,7 +23,7 @@ use log::info;
 async fn create_entitlement(
     inbound: Json<FormatEntitlementModel>,
     auth: ReqData<Model>,
-) -> APIResult {
+) -> APIResponse {
     verify_admin(&auth)?;
     let db = DB_POOL.get().expect("database is not initialized");
     // make sure we're assigning a format to a non-superuser
@@ -50,7 +50,7 @@ async fn get_all_entitlements(
     pager: Query<APIPager>,
     filter: Query<ModelAsQuery>,
     auth: ReqData<Model>,
-) -> APIResult {
+) -> APIResponse {
     pager.validate()?;
     let db = DB_POOL.get().expect("database is not initialized");
     let auth = auth.into_inner();
@@ -66,7 +66,7 @@ async fn get_all_entitlements(
 async fn delete_entitlement(
     inbound: Json<FormatEntitlementSearch>,
     auth: ReqData<Model>,
-) -> APIResult {
+) -> APIResponse {
     let db = DB_POOL.get().expect("database is not initialized");
     verify_admin(&auth)?;
     let inbound = inbound.into_inner();

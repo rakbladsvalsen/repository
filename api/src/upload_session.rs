@@ -1,7 +1,7 @@
 use crate::{
     conf::DB_POOL,
     core_middleware::auth::AuthMiddleware,
-    error::APIResult,
+    error::APIResponse,
     pagination::{APIPager, PaginatedResponse},
 };
 use actix_web::{
@@ -24,7 +24,7 @@ async fn get_all_upload_sessions(
     pager: Query<APIPager>,
     filter: Query<ModelAsQuery>,
     auth: ReqData<UserModel>,
-) -> APIResult {
+) -> APIResponse {
     pager.validate()?;
     let db = DB_POOL.get().expect("database is not initialized");
     let auth = auth.into_inner();

@@ -11,7 +11,7 @@ use uuid::Uuid;
 #[derive(
     Default, Clone, Debug, PartialEq, Eq, DeriveEntityModel, Deserialize, Serialize, AsQueryParam,
 )]
-#[as_query(sort_default_column = "Column::Id", camel_case)]
+#[as_query(sort_default_column = "Column::CreatedAt", camel_case)]
 #[sea_orm(table_name = "user")]
 #[serde(rename_all = "camelCase")]
 pub struct Model {
@@ -51,7 +51,10 @@ fn active_default() -> bool {
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {}
+pub enum Relation {
+    #[sea_orm(has_many = "super::api_key::Entity")]
+    ApiKey,
+}
 
 impl ActiveModelBehavior for ActiveModel {}
 
@@ -65,5 +68,12 @@ impl Related<super::format::Entity> for Entity {
         // The original relation is CakeFilling -> Cake,
         // after `rev` it becomes Cake -> CakeFilling
         Some(super::format_entitlement::Relation::User.def().rev())
+    }
+}
+
+impl Related<super::api_key::Entity> for Entity {
+    // The final relation is Cake -> CakeFilling -> Filling
+    fn to() -> RelationDef {
+        Relation::ApiKey.def()
     }
 }

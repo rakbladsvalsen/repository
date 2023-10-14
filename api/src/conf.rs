@@ -29,6 +29,8 @@ lazy_static! {
     pub static ref DB_CSV_STREAM_WORKERS: usize = CONFIG.db_csv_stream_workers as usize;
     pub static ref DB_CSV_TRANSFORM_WORKERS: usize = CONFIG.db_csv_transform_workers as usize;
     pub static ref DB_CSV_WORKER_QUEUE_DEPTH: usize = CONFIG.db_csv_worker_queue_depth as usize;
+    pub static ref MAX_API_KEYS_PER_USER: usize = CONFIG.max_api_keys_per_user as usize;
+    pub static ref TOKEN_API_KEY_EXPIRATION_HOURS: usize = CONFIG.token_api_key_expiration_hours as usize;
 }
 
 fn get_coding_keys(key: &String) -> Result<(EncodingKey, DecodingKey), Box<dyn Error>> {
@@ -102,6 +104,13 @@ pub struct Config {
 
     #[envconfig(from = "DB_CSV_WORKER_QUEUE_DEPTH", default = "200")]
     pub db_csv_worker_queue_depth: u64,
+
+    #[envconfig(from = "MAX_API_KEYS_PER_USER", default = "10")]
+    pub max_api_keys_per_user: u64,
+
+    // set by default to 1 month (24 * 30 = 720)
+    #[envconfig(from = "TOKEN_API_KEY_EXPIRATION_HOURS", default = "720")]
+    pub token_api_key_expiration_hours: u64,
 }
 
 impl Config {
@@ -145,6 +154,12 @@ impl Config {
         }
         if self.db_csv_worker_queue_depth == 0 {
             return Err("DB_CSV_WORKER_QUEUE_DEPTH must be greater than 0".into());
+        }
+        if self.max_api_keys_per_user == 0 {
+            return Err("MAX_API_KEYS_PER_USER must be greater than 0".into());
+        }
+        if self.token_api_key_expiration_hours == 0 {
+            return Err("TOKEN_API_KEY_EXPIRATION_HOURS must be greater than 0".into());
         }
         Ok(())
     }
