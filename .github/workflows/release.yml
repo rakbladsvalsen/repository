@@ -18,30 +18,30 @@ jobs:
             target: x86_64-unknown-linux-musl
             args: --best --lzma -9
             strip: true
-          - os: windows-latest
-            artifact_name: central-repository.exe
-            release_name: central-repository-windows-amd64.exe
-            target: x86_64-pc-windows-msvc
-            args: --best --lzma -9
-            strip: true
-          - os: macos-latest
-            artifact_name: central-repository
-            release_name: central-repository-macos-amd64
-            target: x86_64-apple-darwin
-            args: --best --lzma -9
-            strip: true
+          # - os: windows-latest
+          #   artifact_name: central-repository.exe
+          #   release_name: central-repository-windows-amd64.exe
+          #   target: x86_64-pc-windows-msvc
+          #   args: --best --lzma -9
+          #   strip: true
           - os: ubuntu-latest
             artifact_name: central-repository
             release_name: central-repository-linux-arm64
             target: aarch64-unknown-linux-musl
             args: --best --lzma -9
             strip: false
-          - os: macos-latest
-            artifact_name: central-repository
-            release_name: central-repository-macos-arm64
-            target: aarch64-apple-darwin
-            args: --best --lzma -9
-            strip: true
+          # - os: macos-latest
+          #   artifact_name: central-repository
+          #   release_name: central-repository-macos-amd64
+          #   target: x86_64-apple-darwin
+          #   args: --best --lzma -9
+          #   strip: true
+          # - os: macos-latest
+          #   artifact_name: central-repository
+          #   release_name: central-repository-macos-arm64
+          #   target: aarch64-apple-darwin
+          #   args: --best --lzma -9
+          #   strip: true
 
     steps:
       - uses: actions/checkout@v1
