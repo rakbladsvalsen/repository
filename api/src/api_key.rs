@@ -44,12 +44,7 @@ pub async fn create_api_key(user: Path<Uuid>, auth: ReqData<UserModel>) -> APIRe
             }
             user
         }
-        _ => {
-            return Err(APIError::NotFound(format!(
-                "User ID '{}' does not exist.",
-                user_id
-            )))
-        }
+        _ => return Err(APIError::NotFound(format!("user ID '{}'", user_id))),
     };
 
     let api_key = ApiKeyMutation::create_for_user(db, &user).await?;
@@ -84,7 +79,7 @@ pub async fn update_api_key(
         Some((_user, key)) => key,
         _ => {
             return Err(APIError::NotFound(format!(
-                "Cannot find key with id '{}' for user id '{}'",
+                "key with id '{}' for user id '{}'",
                 key_id, user_id
             )))
         }
@@ -120,7 +115,7 @@ pub async fn delete_api_key(
         Some((_user, key)) => key,
         _ => {
             return Err(APIError::NotFound(format!(
-                "Cannot find key with id '{}' for user id '{}'",
+                "key with id '{}' for user id '{}'",
                 key_id, user_id
             )))
         }

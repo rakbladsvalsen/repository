@@ -268,7 +268,7 @@
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"username\": \"{{CREATED_USERNAME}}\",\n    \"password\": \"password\"\n}",
+					"raw": "{\n    \"username\": \"{{CREATED_USERNAME}}\",\n    \"password\": \"123\"\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -371,14 +371,7 @@
 					"listen": "test",
 					"script": {
 						"exec": [
-							"if(responseCode.code===201){",
-							"    try{",
-							"        var result = JSON.parse(responseBody);",
-							"        postman.setGlobalVariable(\"NEW_FORMAT_ID\", result.id)",
-							"    }catch(e){",
-							"        console.error(e);",
-							"    }",
-							"}"
+							""
 						],
 						"type": "text/javascript"
 					}
@@ -520,84 +513,6 @@
 			"response": []
 		},
 		{
-			"name": "[User] Get all",
-			"event": [
-				{
-					"listen": "test",
-					"script": {
-						"exec": [
-							"if(responseCode.code===201){",
-							"    try{",
-							"        var result = JSON.parse(responseBody);",
-							"        postman.setGlobalVariable(\"NEW_FORMAT_ID\", result.id)",
-							"    }catch(e){",
-							"        console.error(e);",
-							"    }",
-							"}"
-						],
-						"type": "text/javascript"
-					}
-				},
-				{
-					"listen": "prerequest",
-					"script": {
-						"exec": [
-							"function makeId(length = 10){",
-							"    var result = \"\";",
-							"    var chars = \"ABCDEFGabcdefg1234567890\";",
-							"    var selectionableLength = chars.length;",
-							"    for(var i = 0; i < length; i++)",
-							"        result += chars.charAt(Math.floor(Math.random() * selectionableLength))",
-							"    return result;",
-							"}",
-							"",
-							"postman.setGlobalVariable(\"RANDOM\", makeId())",
-							"postman.setGlobalVariable(\"RANDOM_COLUMN\", \"Column_\" + makeId())",
-							"postman.setGlobalVariable(\"RANDOM_COLUMN_B\", \"Column_\" + makeId())",
-							"postman.setGlobalVariable(\"RANDOM_COLUMN_C\", \"Column_\" + makeId())"
-						],
-						"type": "text/javascript"
-					}
-				}
-			],
-			"protocolProfileBehavior": {
-				"disableBodyPruning": true
-			},
-			"request": {
-				"auth": {
-					"type": "bearer",
-					"bearer": [
-						{
-							"key": "token",
-							"value": "{{TOKEN}}",
-							"type": "string"
-						}
-					]
-				},
-				"method": "GET",
-				"header": [],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n    \"token\": \"{{TOKEN}}\"\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"url": {
-					"raw": "{{HOST}}/user",
-					"host": [
-						"{{HOST}}"
-					],
-					"path": [
-						"user"
-					]
-				}
-			},
-			"response": []
-		},
-		{
 			"name": "[User] Delete",
 			"event": [
 				{
@@ -668,6 +583,304 @@
 					"path": [
 						"user",
 						"{{CREATED_USER_ID}}"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "[User] Get all",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"if(responseCode.code===201){",
+							"    try{",
+							"        var result = JSON.parse(responseBody);",
+							"        postman.setGlobalVariable(\"NEW_FORMAT_ID\", result.id)",
+							"    }catch(e){",
+							"        console.error(e);",
+							"    }",
+							"}"
+						],
+						"type": "text/javascript"
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							"function makeId(length = 10){",
+							"    var result = \"\";",
+							"    var chars = \"ABCDEFGabcdefg1234567890\";",
+							"    var selectionableLength = chars.length;",
+							"    for(var i = 0; i < length; i++)",
+							"        result += chars.charAt(Math.floor(Math.random() * selectionableLength))",
+							"    return result;",
+							"}",
+							"",
+							"postman.setGlobalVariable(\"RANDOM\", makeId())",
+							"postman.setGlobalVariable(\"RANDOM_COLUMN\", \"Column_\" + makeId())",
+							"postman.setGlobalVariable(\"RANDOM_COLUMN_B\", \"Column_\" + makeId())",
+							"postman.setGlobalVariable(\"RANDOM_COLUMN_C\", \"Column_\" + makeId())"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{TOKEN}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{HOST}}/user",
+					"host": [
+						"{{HOST}}"
+					],
+					"path": [
+						"user"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "[User] ApiKey: Create",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"if(responseCode.code===201){",
+							"    try{",
+							"        var result = JSON.parse(responseBody);",
+							"        postman.setGlobalVariable(\"TOKEN\", result.token);",
+							"        postman.setGlobalVariable(\"API_KEY_ID\", result.apiKey.id);",
+							"    }catch(e){",
+							"        console.error(e);",
+							"    }",
+							"}"
+						],
+						"type": "text/javascript"
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{TOKEN}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [],
+				"url": {
+					"raw": "{{HOST}}/user/{{CREATED_USER_ID}}/api-key",
+					"host": [
+						"{{HOST}}"
+					],
+					"path": [
+						"user",
+						"{{CREATED_USER_ID}}",
+						"api-key"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "[User] ApiKey: Update",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript"
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{TOKEN}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "PATCH",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"active\": true,\n    \"rotate\": true\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{HOST}}/user/{{CREATED_USER_ID}}/api-key/{{API_KEY_ID}}",
+					"host": [
+						"{{HOST}}"
+					],
+					"path": [
+						"user",
+						"{{CREATED_USER_ID}}",
+						"api-key",
+						"{{API_KEY_ID}}"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "[User] ApiKey: Delete",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript"
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{TOKEN}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "DELETE",
+				"header": [],
+				"url": {
+					"raw": "{{HOST}}/user/{{CREATED_USER_ID}}/api-key/{{API_KEY_ID}}",
+					"host": [
+						"{{HOST}}"
+					],
+					"path": [
+						"user",
+						"{{CREATED_USER_ID}}",
+						"api-key",
+						"{{API_KEY_ID}}"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "[User] ApiKey: Get all",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript"
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{TOKEN}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{HOST}}/user/api-key?activeEq=false",
+					"host": [
+						"{{HOST}}"
+					],
+					"path": [
+						"user",
+						"api-key"
+					],
+					"query": [
+						{
+							"key": "activeEq",
+							"value": "false"
+						}
 					]
 				}
 			},
@@ -984,89 +1197,6 @@
 			"response": []
 		},
 		{
-			"name": "[Search] Create new search",
-			"request": {
-				"auth": {
-					"type": "bearer",
-					"bearer": [
-						{
-							"key": "token",
-							"value": "{{TOKEN}}",
-							"type": "string"
-						}
-					]
-				},
-				"method": "POST",
-				"header": [],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n    \"name\": \"cashiRecordsForToday\",\n    \"uploadSession\":{\n        \"createdAtGte\": \"{{TODAY}}\"\n    },\n    \"query\": [\n        {\n            \"args\": [\n                {\n                    \"column\": \"Column_8bGCFff2cC\",\n                    \"comparisonOperator\": \"eq\",\n                    \"compareAgainst\": 12132123\n                }\n            ]\n        }\n    ]\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"url": {
-					"raw": "{{HOST}}/search",
-					"host": [
-						"{{HOST}}"
-					],
-					"path": [
-						"search"
-					]
-				}
-			},
-			"response": []
-		},
-		{
-			"name": "[Search] Get predefined data",
-			"protocolProfileBehavior": {
-				"disableBodyPruning": true
-			},
-			"request": {
-				"auth": {
-					"type": "bearer",
-					"bearer": [
-						{
-							"key": "token",
-							"value": "{{TOKEN}}",
-							"type": "string"
-						}
-					]
-				},
-				"method": "GET",
-				"header": [
-					{
-						"key": "X-Query-Params",
-						"value": "ewogICAgInVwbG9hZFNlc3Npb24iOnsKICAgICAgICAiY3JlYXRlZEF0R3RlIjogIjIwMjMtMDQtMTlUMDI6Mzg6MDEuNTI4WiIKICAgIH0sCiAgICAicXVlcnkiOiBbCiAgICAgICAgewogICAgICAgICAgICAiYXJncyI6IFsKICAgICAgICAgICAgICAgIHsKICAgICAgICAgICAgICAgICAgICAiY29sdW1uIjogIkNvbHVtbl84YkdDRmZmMmNDIiwKICAgICAgICAgICAgICAgICAgICAiY29tcGFyaXNvbk9wZXJhdG9yIjogImVxIiwKICAgICAgICAgICAgICAgICAgICAiY29tcGFyZUFnYWluc3QiOiAxMjEzMjEyMwogICAgICAgICAgICAgICAgfQogICAgICAgICAgICBdCiAgICAgICAgfQogICAgXQp9Cg==",
-						"type": "default",
-						"disabled": true
-					}
-				],
-				"body": {
-					"mode": "raw",
-					"raw": "",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"url": {
-					"raw": "{{HOST}}/search/cashiRecordsForToday",
-					"host": [
-						"{{HOST}}"
-					],
-					"path": [
-						"search",
-						"cashiRecordsForToday"
-					]
-				}
-			},
-			"response": []
-		},
-		{
 			"name": "[Format] Filtered data",
 			"protocolProfileBehavior": {
 				"disableBodyPruning": true
@@ -1085,15 +1215,15 @@
 				"method": "GET",
 				"header": [
 					{
-						"key": "X-Query-Params",
-						"value": "ewogICAgInVwbG9hZFNlc3Npb24iOnsKICAgICAgICAiY3JlYXRlZEF0R3RlIjogIjIwMjMtMDQtMTlUMDI6Mzg6MDEuNTI4WiIKICAgIH0sCiAgICAicXVlcnkiOiBbCiAgICAgICAgewogICAgICAgICAgICAiYXJncyI6IFsKICAgICAgICAgICAgICAgIHsKICAgICAgICAgICAgICAgICAgICAiY29sdW1uIjogIkNvbHVtbl84YkdDRmZmMmNDIiwKICAgICAgICAgICAgICAgICAgICAiY29tcGFyaXNvbk9wZXJhdG9yIjogImVxIiwKICAgICAgICAgICAgICAgICAgICAiY29tcGFyZUFnYWluc3QiOiAxMjEzMjEyMwogICAgICAgICAgICAgICAgfQogICAgICAgICAgICBdCiAgICAgICAgfQogICAgXQp9Cg==",
+						"key": "",
+						"value": "",
 						"type": "default",
 						"disabled": true
 					}
 				],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"uploadSession\":{\n        \"createdAtGte\": \"2023-04-19T02:38:01.528Z\"\n    },\n    \"query\": [\n        {\n            \"args\": [\n                {\n                    \"column\": \"Column_8bGCFff2cC\",\n                    \"comparisonOperator\": \"eq\",\n                    \"compareAgainst\": 12132123\n                }\n            ]\n        }\n    ]\n}",
+					"raw": "{\n    \"query\": [\n        {\n            \"args\": [\n                {\n                    \"column\": \"SomeColumn\",\n                    \"comparisonOperator\": \"eq\",\n                    \"compareAgainst\": 1234\n                }\n            ]\n        }\n    ]\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -1101,20 +1231,26 @@
 					}
 				},
 				"url": {
-					"raw": "{{HOST}}/record/filter",
+					"raw": "{{HOST}}/record/filter?perPage=10000",
 					"host": [
 						"{{HOST}}"
 					],
 					"path": [
 						"record",
 						"filter"
+					],
+					"query": [
+						{
+							"key": "perPage",
+							"value": "10000"
+						}
 					]
 				}
 			},
 			"response": []
 		},
 		{
-			"name": "[Format] Filtered data CSV",
+			"name": "[Format] Filtered data Copy",
 			"protocolProfileBehavior": {
 				"disableBodyPruning": true
 			},
@@ -1130,10 +1266,54 @@
 					]
 				},
 				"method": "GET",
+				"header": [
+					{
+						"key": "",
+						"value": "",
+						"type": "default",
+						"disabled": true
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{HOST}}/record/test",
+					"host": [
+						"{{HOST}}"
+					],
+					"path": [
+						"record",
+						"test"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "[Format] Filtered data CSV",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{TOKEN}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"uploadSession\":{\n        \"createdAtGte\": \"2023-04-19T02:38:01.528Z\"\n    },\n    \"query\": [\n        {\n            \"args\": [\n                {\n                    \"column\": \"Column_8bGCFff2cC\",\n                    \"comparisonOperator\": \"eq\",\n                    \"compareAgainst\": 12132123\n                }\n            ]\n        }\n    ]\n}",
+					"raw": "{\n    \"uploadSession\":{\n        \"createdAtGte\": \"2023-04-19T02:38:01.528Z\"\n    },\n    \"query\": [\n        {\n            \"args\": [\n                {\n                    \"column\": \"Column_8bGCFff2cC\",\n                    \"comparisonOperator\": \"gt\",\n                    \"compareAgainst\": 1234\n                }\n            ]\n        }\n    ]\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -1170,7 +1350,7 @@
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"userId\": {{CREATED_USER_ID}},\n    \"formatId\": {{NEW_FORMAT_ID}},\n    \"access\": \"readWrite\"\n}",
+					"raw": "{\n    \"userId\": \"{{CREATED_USER_ID}}\",\n    \"formatId\": {{NEW_FORMAT_ID}},\n    \"access\": \"readWrite\"\n}",
 					"options": {
 						"raw": {
 							"language": "json"
