@@ -63,7 +63,7 @@ class Column(BaseModel):
         return self._set(other, "lte")
 
     def __str__(self):
-        return f"Column <'{self.column}' {self._operator} '{self._other}'>"
+        return f"Column <'{self.column}' {self.operator} '{self.other}'>"
 
 
 class QueryGroupKind(str, Enum):
@@ -119,3 +119,12 @@ class Query(ClientBaseModel):
     format_id: Optional[list[int]] = Field(None, alias="formats")
     upload_session: Optional[UploadSessionQuery] = Field(None, alias="uploadSession")
     query: list[QueryGroup]
+
+    @classmethod
+    def new_empty(cls) -> "Query":
+        """Create a new empty query. Usually useful to pull
+        ALL data available for this user.
+
+        :return: Query
+        """
+        return Query(query=[])

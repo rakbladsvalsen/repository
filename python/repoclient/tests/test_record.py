@@ -1,12 +1,20 @@
 import repoclient
 import pytest
 import logging
+from pandas import read_csv
+from io import BytesIO
 
-from .util import get_random_string, api_client, admin_user, sample_format, normal_user
+from .util import (
+    get_random_string,
+    api_client,
+    admin_user,
+    sample_format,
+    normal_user,
+    load_streaming_query_into_df,
+)
 from repoclient import ColumnSchema
 
-
-logging.getLogger("repoclient").setLevel(logging.DEBUG)
+RECORD_PAYLOAD_SIZES: list[int] = [10, 100, 500, 1_000, 5_000, 10_000, 15_000]
 
 
 @pytest.mark.asyncio
@@ -29,7 +37,7 @@ async def test_upload_record_admin_wrong_type(
 ):
     data = [{"NumericColumn": "123", "StringColumn": 123}] * 10
     with pytest.raises(repoclient.RepositoryException) as exc:
-        upload = await sample_format.upload_data(api_client, admin_user, data)
+        _upload = await sample_format.upload_data(api_client, admin_user, data)
         # user cannot upload because they have insufficient perms
     exc: repoclient.RepositoryException = exc.value
     assert exc.request_id is not None
@@ -43,7 +51,7 @@ async def test_upload_record_no_entitlement(
     data = [{"NumericColumn": 123, "StringColumn": "abcdeasf"}] * 100
     with pytest.raises(repoclient.RepositoryException) as exc:
         # user cannot upload because they have insufficient perms
-        upload = await sample_format.upload_data(api_client, normal_user, data)
+        _upload = await sample_format.upload_data(api_client, normal_user, data)
     exc: repoclient.RepositoryException = exc.value
     assert exc.request_id is not None
     assert exc.error.kind == repoclient.RepositoryKindError.INSUFFICIENT_PERM
@@ -128,51 +136,73 @@ async def test_entitlement_create_normal_user(
     assert exc.error.kind == repoclient.RepositoryKindError.ADMIN_ONLY
 
 
+@pytest.mark.parametrize("payload_size", RECORD_PAYLOAD_SIZES)
 @pytest.mark.asyncio
-async def test_query(api_client, admin_user, sample_format: repoclient.Format):
+async def test_query(
+    api_client, admin_user, sample_format: repoclient.Format, payload_size: int
+):
     data = []
     string_data = []
-    for i in range(0, 100):
+    for i in range(0, payload_size):
         entry = {"NumericColumn": i, "StringColumn": f"{i}"}
         string_data.append(entry["StringColumn"])
         data.append(entry)
 
     upload = await sample_format.upload_data(api_client, admin_user, data)
     assert upload.outcome == "Success"
-    assert upload.record_count == 100
+    assert upload.record_count == payload_size
     group = repoclient.QueryGroup(
         args=[
             # query all numbers that are greater or equal than 50
-            repoclient.Column(column="NumericColumn") >= 50,
+            repoclient.Column(column="NumericColumn") >= payload_size // 2,
             # also query all strings that are in the string_data (basically the same condition as above)
             repoclient.Column(column="StringColumn").is_in(string_data),
         ]
     )
     query = repoclient.Query(query=[group], format_id=[sample_format.id])
+
     # use all available pagination strategies
     for strategy in list(repoclient.PaginationStrategy):
         seen_records = set()
         async for item in sample_format.get_data(
             api_client, admin_user, query, pagination_strategy=strategy
         ):
-            assert item.data["NumericColumn"] >= 50
+            assert item.data["NumericColumn"] >= payload_size // 2
             seen_records.add(item.data["NumericColumn"])
         # make sure we have exactly 50 records
-        assert len(seen_records) == 50
+        assert len(seen_records) == payload_size // 2
+
+    # Also check dataframe output
+    dataframe = await load_streaming_query_into_df(
+        api_client, admin_user, sample_format, query
+    )
+    dataframe["NumericColumn"] = dataframe["NumericColumn"].astype("float")
+
+    unique_values = len(list(dataframe["NumericColumn"].unique()))
+    assert unique_values == (
+        payload_size // 2
+    ), f"Expected {payload_size} unique values"
+    assert dataframe["NumericColumn"].min() == payload_size // 2, "Min check failed"
+    assert dataframe["NumericColumn"].max() == payload_size - 1, "Max check failed"
+    assert len(dataframe.index) == (payload_size // 2), "Dataframe has wrong dimensions"
+    assert {"NumericColumn", "StringColumn"}.issubset(
+        set(dataframe.columns)
+    ), "CSV contains unexpected columns"
 
 
+@pytest.mark.parametrize("payload_size", RECORD_PAYLOAD_SIZES)
 @pytest.mark.asyncio
-async def test_query_unique(api_client, admin_user, sample_format: repoclient.Format):
+async def test_query_unique(
+    api_client, admin_user, sample_format: repoclient.Format, payload_size: int
+):
     data = []
-    string_data = []
-    MAX_RECORDS = 10_000
-    for i in range(0, MAX_RECORDS):
+    for i in range(0, payload_size):
         entry = {"NumericColumn": i, "StringColumn": f"{i}"}
         data.append(entry)
 
     upload = await sample_format.upload_data(api_client, admin_user, data)
     assert upload.outcome == "Success"
-    assert upload.record_count == MAX_RECORDS
+    assert upload.record_count == payload_size
 
     query = repoclient.Query(query=[], format_id=[sample_format.id])
     # use all available pagination strategies
@@ -191,29 +221,47 @@ async def test_query_unique(api_client, admin_user, sample_format: repoclient.Fo
             ), "received duplicate/invalid record"
             seen_records.add(numeric_value)
         # make sure we have exactly MAX_RECORDS records
-        assert len(seen_records) == MAX_RECORDS
+        assert len(seen_records) == payload_size
         assert min(seen_records) == 0
-        assert max(seen_records) == (MAX_RECORDS - 1)
+        assert max(seen_records) == (payload_size - 1)
+
+    # Test dataframe
+    dataframe = await load_streaming_query_into_df(
+        api_client, admin_user, sample_format, query
+    )
+    dataframe["NumericColumn"] = dataframe["NumericColumn"].astype("float")
+
+    unique_values = len(list(dataframe["NumericColumn"].unique()))
+    assert unique_values == (payload_size), f"Expected {payload_size} unique values"
+    assert dataframe["NumericColumn"].min() == 0, "Min check failed"
+    assert dataframe["NumericColumn"].max() == payload_size - 1, "Max check failed"
+    assert len(dataframe.index) == payload_size, "Dataframe has wrong dimensions"
+    assert {"NumericColumn", "StringColumn"}.issubset(
+        set(dataframe.columns)
+    ), "CSV contains unexpected columns"
 
 
+@pytest.mark.parametrize("payload_size", RECORD_PAYLOAD_SIZES)
 @pytest.mark.asyncio
-async def test_query_negated(api_client, admin_user, sample_format: repoclient.Format):
+async def test_query_negated(
+    api_client, admin_user, sample_format: repoclient.Format, payload_size: int
+):
     data = []
     string_data = []
-    for i in range(0, 100):
+    for i in range(0, payload_size):
         entry = {"NumericColumn": i, "StringColumn": f"{i}"}
         string_data.append(entry["StringColumn"])
         data.append(entry)
 
     upload = await sample_format.upload_data(api_client, admin_user, data)
     assert upload.outcome == "Success"
-    assert upload.record_count == 100
+    assert upload.record_count == payload_size
     # test with the same condition as above but this time invert the whole thing
     # this should return all records that are less than 50
     group = repoclient.QueryGroup(
         args=[
             # query all numbers that are greater or equal than 50
-            repoclient.Column(column="NumericColumn") >= 50,
+            repoclient.Column(column="NumericColumn") >= payload_size // 2,
             # also query all strings that are in the string_data (basically the same condition as above)
             repoclient.Column(column="StringColumn").is_in(string_data),
         ]
@@ -225,41 +273,64 @@ async def test_query_negated(api_client, admin_user, sample_format: repoclient.F
         async for item in sample_format.get_data(
             api_client, admin_user, query, pagination_strategy=strategy
         ):
-            assert item.data["NumericColumn"] < 50
+            assert item.data["NumericColumn"] < payload_size // 2
             seen_records.add(item.data["NumericColumn"])
         # make sure we have exactly 50 records
         assert (
-            len(seen_records) == 50
+            len(seen_records) == payload_size // 2
         ), f"wrong number of records returned (got {len(seen_records)}"
 
+    # Test dataframe
+    dataframe = await load_streaming_query_into_df(
+        api_client, admin_user, sample_format, query
+    )
+    dataframe["NumericColumn"] = dataframe["NumericColumn"].astype("float")
 
+    unique_values = len(list(dataframe["NumericColumn"].unique()))
+    assert unique_values == (
+        payload_size // 2
+    ), f"Expected {payload_size} unique values"
+    assert dataframe["NumericColumn"].min() == 0, "Min check failed"
+    assert (
+        dataframe["NumericColumn"].max() == (payload_size // 2) - 1
+    ), "Max check failed"
+    assert len(dataframe.index) == payload_size // 2, "Dataframe has wrong dimensions"
+    assert {"NumericColumn", "StringColumn"}.issubset(
+        set(dataframe.columns)
+    ), "CSV contains unexpected columns"
+
+
+@pytest.mark.parametrize("payload_size", RECORD_PAYLOAD_SIZES)
 @pytest.mark.asyncio
-async def test_query_empty(api_client, admin_user, sample_format: repoclient.Format):
+async def test_query_empty(
+    api_client, admin_user, sample_format: repoclient.Format, payload_size: int
+):
     data = []
     string_data = []
-    for i in range(0, 100):
+    for i in range(0, payload_size):
         entry = {"NumericColumn": i, "StringColumn": f"{i}"}
         string_data.append(entry["StringColumn"])
         data.append(entry)
 
     upload = await sample_format.upload_data(api_client, admin_user, data)
     assert upload.outcome == "Success"
-    assert upload.record_count == 100
+    assert upload.record_count == payload_size
     # test with the same condition as above but this time invert the whole thing
     # this should return all records that are less than 50
+    half = payload_size // 2
     group = repoclient.QueryGroup(
         args=[
             # query all numbers that are greater or equal than 50
             repoclient.Column(column="NumericColumn")
-            >= 50,
+            >= half,
         ]
     ).negate()
     # this group is exactly the opposite of the above group: it'll
     # return all records whose StringColumn is between "51" and "100"
     second_group = repoclient.QueryGroup(
         args=[
-            repoclient.Column(column="StringColumn").is_in(string_data[50:]),
-            repoclient.Column(column="NumericColumn") >= 50,
+            repoclient.Column(column="StringColumn").is_in(string_data[half:]),
+            repoclient.Column(column="NumericColumn") >= half,
         ]
     )
     query = repoclient.Query(query=[group, second_group], format_id=[sample_format.id])
@@ -272,6 +343,15 @@ async def test_query_empty(api_client, admin_user, sample_format: repoclient.For
             count += 1
         # make sure there are no records
         assert count == 0, f"count should be 0 but got {count}"
+
+    # Test dataframe (we just need to make sure it's empty)
+    dataframe = await load_streaming_query_into_df(
+        api_client, admin_user, sample_format, query
+    )
+    assert len(dataframe.index) == 0, "Dataframe wasn't empty"
+    assert {"NumericColumn", "StringColumn"}.issubset(
+        set(dataframe.columns)
+    ), "CSV contains unexpected columns"
 
 
 @pytest.mark.asyncio
@@ -310,6 +390,18 @@ async def test_query_like_case_insensitive(
         assert len(seen_titles) == 3, "invalid number of titles"
         assert "Star Wars: attack of the clones" not in seen_titles, "invalid titles"
 
+    # Check dataframe
+    dataframe = await load_streaming_query_into_df(
+        api_client, admin_user, sample_format, query
+    )
+    unique_values = set(list(dataframe["StringColumn"]))
+    # Make sure         {"NumericColumn": 0, "StringColumn": "Star Wars: Attack of the clones"},
+    # is not contained in the retrieved values (since it does not start with "the".
+    for value in unique_values:
+        assert "attack" not in value.lower()
+    assert len(unique_values) == 3
+    assert unique_values.issubset(expected_titles)
+
 
 @pytest.mark.asyncio
 async def test_query_regex_case_insensitive(
@@ -343,6 +435,13 @@ async def test_query_regex_case_insensitive(
         assert seen_titles.issubset(expected_titles), "invalid titles"
         assert len(seen_titles) == 2, "invalid number of titles"
 
+    dataframe = await load_streaming_query_into_df(
+        api_client, admin_user, sample_format, query
+    )
+    unique_values = set(list(dataframe["StringColumn"]))
+    assert len(unique_values) == 2
+    assert unique_values.issubset(expected_titles)
+
 
 @pytest.mark.asyncio
 async def test_query_regex_case_sensitive(
@@ -374,3 +473,9 @@ async def test_query_regex_case_sensitive(
         # make sure there is one record
         assert len(seen_titles) == 1, "invalid number of titles"
         assert list(seen_titles)[0] == "Star Wars: THE FORCE AWAKENS", "invalid titles"
+
+    dataframe = await load_streaming_query_into_df(
+        api_client, admin_user, sample_format, query
+    )
+    unique_values = set(list(dataframe["StringColumn"]))
+    assert len(unique_values) == 1

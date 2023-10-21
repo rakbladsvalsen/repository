@@ -1,19 +1,26 @@
 import string
+from io import BytesIO
 from random import choice
 import logging
 import os
 
+import pandas
 import pytest
 from httpx import AsyncClient
+from pandas import read_csv
 
 import repoclient
-from repoclient import ColumnSchema
+from repoclient import ColumnSchema, Query, User, Format
 
 ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin")
 
+ENABLE_DEBUG_LOGS = bool(os.environ.get("ENABLE_DEBUG_LOGS", False))
+REPOSITORY_URL = os.environ.get("REPOSITORY_URL", "http://localhost:8000")
+REPOSITORY_TIMEOUT = int(os.environ.get("REPOSITORY_TIMEOUT", 60))
 
-logging.getLogger("repoclient").setLevel(logging.DEBUG)
+if ENABLE_DEBUG_LOGS is True:
+    logging.getLogger("repoclient").setLevel(logging.DEBUG)
 
 
 def get_random_string(length):
@@ -24,7 +31,9 @@ def get_random_string(length):
 
 @pytest.fixture
 async def api_client():
-    async with AsyncClient(base_url="http://localhost:8000", timeout=60) as api_client:
+    async with AsyncClient(
+        base_url=REPOSITORY_URL, timeout=REPOSITORY_TIMEOUT
+    ) as api_client:
         try:
             yield api_client
         except Exception as e:
@@ -49,10 +58,13 @@ async def normal_user(api_client, admin_user):
         username="test_" + get_random_string(20), password="random"
     )
     await admin_user.create_user(api_client, new_user)
+    new_user = await new_user.login(api_client)
     try:
-        yield await new_user.login(api_client)
-    except Exception as e:
+        yield new_user
+    except Exception as _:
         pass
+    finally:
+        await admin_user.delete_user(api_client, new_user)
 
 
 @pytest.fixture
@@ -72,3 +84,23 @@ async def sample_format(api_client, admin_user):
     except Exception as e:
         pass
     await fmt.delete(api_client, admin_user)
+
+
+async def load_streaming_query_into_df(
+    api_client: AsyncClient, admin_user: User, fmt: Format, query: Query
+) -> pandas.DataFrame:
+    """
+    Load a format query into a dataframe.
+    This function uses the `get_data_csv_stream` utility to load all data into
+    memory.
+
+    :param api_client: Async HTTP Client
+    :param admin_user: User
+    :param fmt: Format
+    :param query: Query
+    :return: pandas.DataFrame
+    """
+    buffer = BytesIO()
+    await fmt.get_data_csv_stream(api_client, admin_user, query, buffer)
+    buffer.seek(0)
+    return read_csv(buffer)

@@ -15,6 +15,7 @@ class RepositoryKindError(str, Enum):
     SERVER_ERROR = "ServerError"
     NOT_FOUND = "NotFound"
     INACTIVE_USER = "InactiveUser"
+    INACTIVE_KEY = "InactiveKey"
     INVALID_CREDENTIALS = "InvalidCredentials"
     INVALID_TOKEN = "InvalidToken"
     MISSING_AUTH_HEADER = "MissingAuthHeader"
@@ -57,7 +58,9 @@ class RepositoryError(BaseModel):
 
     @staticmethod
     def verify_raise_conditionally(response: Response):
+        assert isinstance(response, Response), "not a `Response` object"
         try:
+            logger.debug("checking response: [%s]: %s", response.url, response.headers)
             response.raise_for_status()
         except HTTPStatusError as err:
             try:

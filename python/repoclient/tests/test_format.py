@@ -1,12 +1,8 @@
 import repoclient
 import pytest
-import logging
 
 from .util import get_random_string, api_client, admin_user
 from repoclient import ColumnSchema
-
-
-logging.getLogger("repoclient").setLevel(logging.DEBUG)
 
 
 @pytest.mark.asyncio

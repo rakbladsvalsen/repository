@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Optional, Iterator
-from datetime import datetime
+from typing import Optional, Iterator, IO
+from io import IOBase
+from pprint import pformat
 from pydantic import PrivateAttr, Field
+from datetime import datetime
+from pandas import DataFrame
 from httpx import AsyncClient
 import logging
 
@@ -150,11 +153,19 @@ class Format(RequestModel):
         return True
 
     async def get_count(
-        self, client: AsyncClient, user: User, query: Query
+        self, client: AsyncClient, user: User, query: Query = Query.new_empty()
     ) -> Iterator[Record]:
+        """Get the count of existing items for any given query.
+        If a query isn't passed, this will return the count of all
+        the available items for the passed `user`.
+
+        :param client: HTTP Client
+        :param user: User
+        :param query: Get count for this query
+        :return:
+        """
+
         assert self._checked, "Uninitialized format; call create or get first"
-        if query.format_id is None:
-            logger.warning(NO_FORMAT_ID_WARN_MSG)
         json_query = query.dict(by_alias=True)
         return await PaginatedResponse.get_count(
             upstream=f"{RECORD_URL}/filter",
@@ -166,7 +177,7 @@ class Format(RequestModel):
 
     async def get_data_pandas_dangerous(
         self, client: AsyncClient, user: User, query: Query, *args, **kwargs
-    ) -> "pandas.DataFrame":
+    ) -> DataFrame:
         """Get all data from the repository in a pandas DataFrame.
 
         For documentation, please see the related function: `get_data`.
@@ -177,13 +188,6 @@ class Format(RequestModel):
         If the passed query matches too many results this function might end up
         freezing your computer.
         """
-
-        try:
-            from pandas import DataFrame
-        except Exception as e:
-            logger.error("Couldn't import pandas: ", exc_info=e)
-            raise AssertionError("Please make sure pandas is installed")
-
         assert self._checked, "Uninitialized format; call create() or get() first"
 
         if query.format_id is None:
@@ -230,6 +234,63 @@ class Format(RequestModel):
             df[column.name] = df[column.name].astype(column.get_python_type())
 
         return df
+
+    async def get_data_csv_stream(
+        self,
+        client: AsyncClient,
+        user: User,
+        query: Query,
+        output: IO[bytes],
+        chunk_size: int = 1024 * (1024 * 10),
+    ):
+        """Get all data from the repository, and save it to a IO-like file.
+
+        Unlike all the other get_* functions, `get_data_csv_stream` doesn't return the
+        raw data or a dataframe using pagination. This function pulls all
+        the available data using only a single connection to a bytes-like
+        object.
+
+        WARNING: It's your responsibility to manage the passed buffer
+        (`output`). This includes but is not limited to taking care of memory
+        management and async/sync IO writes.
+
+        :param client: HTTP Client
+        :param user: Authenticated user
+        :param query: Filers to use for this query
+        :param output: Bytes-like writable object
+        :param chunk_size: Buffer size. Default: 10 MiB
+        """
+        assert self._checked, "Uninitialized format; call create or get first"
+        if query.format_id is None:
+            logger.warning(NO_FORMAT_ID_WARN_MSG)
+
+        assert isinstance(output, IOBase), "`output` isn't a bytes-like object"
+
+        json_query = query.dict(by_alias=True)
+        output.seek(0)
+
+        start = datetime.now()
+        read_bytes = 0
+        logger.debug("json query:  %s", pformat(json_query))
+
+        async with client.stream(
+            "POST", f"{RECORD_URL}/filter-stream", json=json_query, headers=user.bearer
+        ) as response:
+            RepositoryError.verify_raise_conditionally(response)
+
+            async for data in response.aiter_bytes(chunk_size=chunk_size):
+                read_bytes += len(data)
+                output.write(data)
+
+        elapsed = (datetime.now() - start).microseconds / 100_000
+        read_mebibyte = read_bytes / (1024 * 1024)
+        logger.info(
+            "csv stream: %.2f MiB, %.2f MiB/s avg (%s bytes in %.3fs)",
+            read_mebibyte,
+            read_mebibyte / elapsed,
+            read_bytes,
+            elapsed,
+        )
 
     async def get_data(
         self, client: AsyncClient, user: User, query: Query, **kwargs

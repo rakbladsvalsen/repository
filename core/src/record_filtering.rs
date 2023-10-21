@@ -19,6 +19,8 @@ use sea_query::{IntoCondition, JoinType, SimpleExpr};
 use serde::*;
 use serde_json::Value;
 
+const DEBUG_ARRAY_MAX_LOGGED: usize = 10;
+
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 #[serde(rename_all = "camelCase")]
 /// Proxy for sea_query's supported condition types.
@@ -84,7 +86,7 @@ impl Default for ConditionKind {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Default, Clone)]
+#[derive(Serialize, Deserialize, Default, Clone)]
 #[serde(rename_all = "camelCase")]
 /// A single search argument. This basically allows
 /// users to define matches against a specific column.
@@ -93,6 +95,31 @@ pub struct SearchArguments {
     join_kind: Option<JoinKind>,
     comparison_operator: ComparisonOperator,
     compare_against: serde_json::Value,
+}
+
+/// The default Debug implementation shows all the array items
+/// (if the user passes an array). That will easily clutter the debug
+/// log, so this custom Debug impl limits the maximum printable
+/// array items to DEBUG_ARRAY_MAX_LOGGED.
+impl core::fmt::Debug for SearchArguments {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        let mut dbg_struct = f.debug_struct("SearchArguments");
+        dbg_struct
+            .field("column", &self.column)
+            .field("join_kind", &self.join_kind)
+            .field("comparison_operator", &self.comparison_operator);
+        if let Some(against) = &self.compare_against.as_array() {
+            if against.len() > DEBUG_ARRAY_MAX_LOGGED {
+                let msg = format!("<{} values in array>", against.len());
+                dbg_struct.field("compare_against", &msg);
+            } else {
+                dbg_struct.field("compare_against", &self.compare_against);
+            }
+        } else {
+            dbg_struct.field("compare_against", &self.compare_against);
+        }
+        dbg_struct.finish()
+    }
 }
 
 impl SearchArguments {

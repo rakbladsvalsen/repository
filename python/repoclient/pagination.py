@@ -146,12 +146,8 @@ class PaginatedResponse:
         url = f"{upstream}page=0&perPage=1"
         logger.debug(f"fetching url: {url}")
         response = await client.request(method, url, headers=user.bearer, json=json)
-        if response.status_code != 200:
-            logger.error("response was: %s", response.text)
-            RepositoryError.verify_raise_conditionally(response)
-        item_count: int = int(response.headers.get("repository-item-count"))
-        logger.debug("item count: %s", item_count)
-        return item_count
+        RepositoryError.verify_raise_conditionally(response)
+        return int(response.headers.get("repository-item-count", 0))
 
     @staticmethod
     async def get_all(
@@ -267,6 +263,7 @@ class PaginatedResponse:
             json=json,
             count=True,
         )
+        RepositoryError.verify_raise_conditionally(response)
         yield deserialized
 
         page_count: int = int(response.headers.get("repository-page-count"))
