@@ -1,8 +1,7 @@
-import orjson.orjson
-from pydantic import BaseModel
+from pydantic import ConfigDict, BaseModel
 
 
 class ClientBaseModel(BaseModel):
-    class Config:
-        allow_population_by_field_name = True
-        json_loads = orjson.orjson.loads
+    # TODO[pydantic]: The following keys were removed: `json_loads`.
+    # Check https://docs.pydantic.dev/dev-v2/migration/#changes-to-config for more information.
+    model_config = ConfigDict(populate_by_name=True)

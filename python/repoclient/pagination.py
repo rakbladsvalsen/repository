@@ -1,10 +1,9 @@
 import asyncio
 import math
-import orjson
 from pprint import pformat
 from concurrent.futures import ProcessPoolExecutor
 from typing import Iterator, Tuple, TypeVar
-from pydantic import parse_obj_as
+from pydantic import TypeAdapter
 from httpx import AsyncClient, Response
 import concurrent
 import logging
@@ -31,17 +30,6 @@ QUEUE_SENTINEL = None
 PER_PAGE_DEFAULT = 10_000
 MAX_CONCURRENT = 8
 POOL_EXECUTOR = concurrent.futures.ProcessPoolExecutor(POOL_EXECUTOR_SIZE)
-
-
-def _deserialize_blocking(as_model: T, json_raw_text: str) -> T:
-    """Deserializes a text object using orJson.
-
-    Parameters
-    ----------
-    as_model: Class to deserialize as
-    json_raw_text: Raw, unparsed JSON
-    """
-    return parse_obj_as(as_model, orjson.loads(json_raw_text))
 
 
 async def _make_paginated_request(
@@ -73,7 +61,6 @@ async def _make_paginated_request(
     logger.debug(
         "url: %s page: %s, per_page: %s, method: %s", url, page, per_page, method
     )
-    loop = asyncio.get_running_loop()
     while True:
         try:
             response = await client.request(method, url, headers=headers, json=json)
@@ -92,9 +79,7 @@ async def _make_paginated_request(
             )
 
     try:
-        deserialized = await loop.run_in_executor(
-            POOL_EXECUTOR, _deserialize_blocking, pydantic_model, response.text
-        )
+        deserialized = TypeAdapter(pydantic_model).validate_json(response.text)
     except Exception as e:
         logger.error("Deserialize error: content: %s", exc_info=e)
         raise e from e
@@ -218,9 +203,7 @@ class PaginatedResponse:
         is_power_of_two = power_of_two == int(power_of_two)
 
         if is_power_of_two:
-            logger.info(
-                "max_concurrency: using semaphoere with size %s", max_concurrency
-            )
+            logger.info("max_concurrency: semaphore permits: %s ", max_concurrency)
         else:
             logger.warning(
                 "max_concurrency should be a power of 2 to better "

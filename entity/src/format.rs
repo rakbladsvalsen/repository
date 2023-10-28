@@ -12,6 +12,7 @@ use std::hash::Hash;
 pub enum ColumnKind {
     Number,
     String,
+    Datetime,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]

@@ -1,15 +1,23 @@
 from enum import Enum
 from pydantic import BaseModel, Field
-from typing import Optional, Any
+from typing import Optional, Any, Annotated
 
 from repoclient.models.base_model import ClientBaseModel
-from repoclient.models.upload_session import UploadSessionQuery
+
+from pydantic import (
+    AfterValidator,
+    PlainSerializer,
+    TypeAdapter,
+    WithJsonSchema,
+)
+
+from repoclient.models.upload_session import QueryParamBase
 
 
 class Column(BaseModel):
     column: str
-    operator: Optional[str] = Field(alias="comparisonOperator")
-    other: Optional[int | float | str | list] = Field(alias="compareAgainst")
+    operator: Optional[str] = Field(None, alias="comparisonOperator")
+    other: Optional[int | float | str | list] = Field(None, alias="compareAgainst")
 
     def _set(self, other: Any, operator: str):
         self.other = other
@@ -115,10 +123,24 @@ class QueryGroup(BaseModel):
         return self
 
 
+def _validate_class(o: object) -> QueryParamBase:
+    assert isinstance(o, QueryParamBase), f"{o} is not a subclass of `QueryParamBase`!"
+    return o
+
+
+UploadSessionSerialized = Annotated[
+    object,
+    AfterValidator(_validate_class),
+    PlainSerializer(lambda upload_session: upload_session.as_dict(), return_type=dict),
+]
+
+
 class Query(ClientBaseModel):
     format_id: Optional[list[int]] = Field(None, alias="formats")
-    upload_session: Optional[UploadSessionQuery] = Field(None, alias="uploadSession")
-    query: list[QueryGroup]
+    upload_session: Optional[UploadSessionSerialized] = Field(
+        None, alias="uploadSession"
+    )
+    query: list[QueryGroup] = []
 
     @classmethod
     def new_empty(cls) -> "Query":
@@ -127,4 +149,4 @@ class Query(ClientBaseModel):
 
         :return: Query
         """
-        return Query(query=[])
+        return Query()

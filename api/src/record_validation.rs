@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use central_repository_dao::{format::ColumnKind, record::DynamicHashmap};
+use central_repository_dao::{format::ColumnKind, record::DynamicHashmap, str_to_isodate};
 use entity::format::Model as FormatModel;
 use itertools::Itertools;
 use log::{debug, error, info};
@@ -78,14 +78,21 @@ impl InboundRecordData {
                     ValidationFailureKind::MissingDictKeys,
                 ));
             }
-            // Validate whether the values in each map have the right data
-            // type, i.e. a String actually has a string and not something else
+            // Validate whether the values in each map have the right data type
             if hmap.iter().any(|(key, value)| {
-                // note: this `key` is guaranteed to exist in `schema` since
-                // we already validated it
-                match schema.get(key).unwrap() {
-                    ColumnKind::Number => value.as_f64().is_none(),
-                    ColumnKind::String => value.as_str().is_none(),
+                if let Some(column_kind) = schema.get(key) {
+                    match *column_kind {
+                        ColumnKind::Number => value.as_f64().is_none(),
+                        ColumnKind::String => value.as_str().is_none(),
+                        ColumnKind::Datetime => value
+                            .as_str()
+                            .map(|s| str_to_isodate(s).is_none())
+                            .unwrap_or(true),
+                    }
+                } else {
+                    // Handle the case where the key is not found in the schema
+                    error!("fatal unhandled error: couldn't find '{key}' in schema {schema:?}");
+                    true
                 }
             }) {
                 return Some(APIError::ValidationFailure(
@@ -95,8 +102,12 @@ impl InboundRecordData {
 
             // match regex, if enabled
             if column_to_regex.iter().any(|(key, regex)| {
-                let value = hmap.get(*key).unwrap().as_str().unwrap();
-                !regex.is_match(value)
+                if let Some(value) = hmap.get(*key).and_then(|v| v.as_str()) {
+                    !regex.is_match(value)
+                } else {
+                    error!("fatal unhandled error: couldn't find '{key}' in {hmap:?}");
+                    true
+                }
             }) {
                 info!("regex match failure for map: {:#?}", hmap);
                 return Some(APIError::ValidationFailure(

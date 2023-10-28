@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use chrono::Utc;
 use entity::{
     error::DatabaseQueryError,
     format::{self, ColumnKind},
@@ -20,6 +21,7 @@ use serde::*;
 use serde_json::Value;
 
 const DEBUG_ARRAY_MAX_LOGGED: usize = 10;
+const PSQL_TZ_CAST: &str = "TIMESTAMP WITH TIME ZONE";
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 #[serde(rename_all = "camelCase")]
@@ -84,6 +86,20 @@ impl Default for ConditionKind {
     fn default() -> Self {
         Self::All
     }
+}
+
+#[inline(always)]
+pub fn str_to_isodate(string: &str) -> Option<chrono::DateTime<Utc>> {
+    if let Ok(date) = chrono::DateTime::parse_from_rfc3339(string) {
+        // Check passed timezone is utc
+        if date.offset().local_minus_utc() != 0 {
+            info!("received timezone: {}, expected utc", date.timezone());
+            return None;
+        }
+        return Some(date.with_timezone(&Utc));
+    }
+    info!("couldn't parse date: {}", string);
+    None
 }
 
 #[derive(Serialize, Deserialize, Default, Clone)]
@@ -197,6 +213,35 @@ impl SearchArguments {
         }
     }
 
+    fn validate_datetime(&self) -> Result<(), DatabaseQueryError> {
+        match self.comparison_operator {
+            // TODO: Properly implement JOIN queries. This will just short-circuit the
+            // validation regardless of the type and throw an error.
+            ComparisonOperator::JoinColumnEq | ComparisonOperator::JoinColumnNotEq => Err(
+                DatabaseQueryError::InvalidUsage("joinEq queries aren't stable".into()),
+            ),
+            ComparisonOperator::Eq
+            | ComparisonOperator::Gt
+            | ComparisonOperator::Lt
+            | ComparisonOperator::Lte
+            | ComparisonOperator::Gte => {
+                if let Some(s) = self.compare_against.as_str() {
+                    if str_to_isodate(s).is_some() {
+                        return Ok(());
+                    }
+                }
+                Err(DatabaseQueryError::InvalidUsage(format!(
+                    "'{}' can only be compared against UTC, ISO8601 dates",
+                    self.column
+                )))
+            }
+            _ => Err(DatabaseQueryError::InvalidUsage(format!(
+                "operator not supported for col '{}' with date type",
+                self.column
+            ))),
+        }
+    }
+
     pub fn validate(&self, db_column_kind: &ColumnKind) -> Result<(), DatabaseQueryError> {
         info!(
             "ColumnKind: validating {:?} against {:?}",
@@ -205,6 +250,7 @@ impl SearchArguments {
         match db_column_kind {
             ColumnKind::Number => self.validate_number(),
             ColumnKind::String => self.validate_string(),
+            ColumnKind::Datetime => self.validate_datetime(),
         }
     }
 }
@@ -454,6 +500,27 @@ impl PreparedSearchQuery {
         None
     }
 
+    #[inline(always)]
+    pub fn cast_value_to_type(
+        value: &Value,
+        column_kind: &ColumnKind,
+    ) -> Result<SimpleExpr, DatabaseQueryError> {
+        match column_kind {
+            ColumnKind::Datetime => {
+                let s = value.as_str().ok_or(DatabaseQueryError::CastError)?;
+                Ok(Expr::expr(s).cast_as(Alias::new(PSQL_TZ_CAST)))
+            }
+            ColumnKind::Number => {
+                let f = value.as_f64().ok_or(DatabaseQueryError::CastError)?;
+                Ok(Expr::expr(f).into())
+            }
+            ColumnKind::String => {
+                let s = value.as_str().ok_or(DatabaseQueryError::CastError)?;
+                Ok(Expr::expr(s).into())
+            }
+        }
+    }
+
     pub fn build_condition_for_arg(
         &self,
         column_kind: &ColumnKind,
@@ -462,12 +529,11 @@ impl PreparedSearchQuery {
         let mut target_json_column = Expr::col(record::Column::Data)
             .binary(PgBinOper::CastJsonField, Expr::val(&expression.column));
 
-        // determine whether this filter needs cast to FLOAT (postgres needs it)
-        let cast_as_f64 = |value: &serde_json::Value| -> Result<f64, DatabaseQueryError> {
-            value.as_f64().ok_or_else(|| DatabaseQueryError::CastError)
-        };
+        // determine whether the target column needs to be casted or not
         if (*column_kind).eq(&ColumnKind::Number) {
             target_json_column = target_json_column.cast_as(Alias::new("FLOAT"));
+        } else if (*column_kind).eq(&ColumnKind::Datetime) {
+            target_json_column = target_json_column.cast_as(Alias::new(PSQL_TZ_CAST));
         }
 
         target_json_column = match expression.comparison_operator {
@@ -486,44 +552,44 @@ impl PreparedSearchQuery {
                         let casted = PreparedSearchQuery::cast_value_array(array, |v| v.as_str())?;
                         Expr::expr(target_json_column).is_in(casted)
                     }
+                    _ => unimplemented!("in operator not supported for arrays"),
                 }
             }
-            ComparisonOperator::Regex => {
-                target_json_column.binary(PgBinOper::Regex, expression.compare_against.as_str())
-            }
+            ComparisonOperator::Regex => target_json_column.binary(
+                PgBinOper::Regex,
+                Self::cast_value_to_type(&expression.compare_against, column_kind)?,
+            ),
             ComparisonOperator::RegexCaseInsensitive => target_json_column.binary(
                 PgBinOper::RegexCaseInsensitive,
-                expression.compare_against.as_str(),
+                Self::cast_value_to_type(&expression.compare_against, column_kind)?,
             ),
-            ComparisonOperator::ILike => {
-                target_json_column.binary(PgBinOper::ILike, expression.compare_against.as_str())
-            }
-            ComparisonOperator::Like => {
-                target_json_column.binary(BinOper::Like, expression.compare_against.as_str())
-            }
-            ComparisonOperator::Eq => {
-                match column_kind {
-                    ColumnKind::Number => target_json_column
-                        .binary(BinOper::Equal, expression.compare_against.as_f64()),
-                    ColumnKind::String => target_json_column
-                        .binary(BinOper::Equal, expression.compare_against.as_str()),
-                }
-            }
+            ComparisonOperator::ILike => target_json_column.binary(
+                PgBinOper::ILike,
+                Self::cast_value_to_type(&expression.compare_against, column_kind)?,
+            ),
+            ComparisonOperator::Like => target_json_column.binary(
+                BinOper::Like,
+                Self::cast_value_to_type(&expression.compare_against, column_kind)?,
+            ),
+            ComparisonOperator::Eq => target_json_column.binary(
+                BinOper::Equal,
+                Self::cast_value_to_type(&expression.compare_against, column_kind)?,
+            ),
             ComparisonOperator::Lt => target_json_column.binary(
                 BinOper::SmallerThan,
-                cast_as_f64(&expression.compare_against)?,
+                Self::cast_value_to_type(&expression.compare_against, column_kind)?,
             ),
             ComparisonOperator::Lte => target_json_column.binary(
                 BinOper::SmallerThanOrEqual,
-                cast_as_f64(&expression.compare_against)?,
+                Self::cast_value_to_type(&expression.compare_against, column_kind)?,
             ),
             ComparisonOperator::Gt => target_json_column.binary(
                 BinOper::GreaterThan,
-                cast_as_f64(&expression.compare_against)?,
+                Self::cast_value_to_type(&expression.compare_against, column_kind)?,
             ),
             ComparisonOperator::Gte => target_json_column.binary(
                 BinOper::GreaterThanOrEqual,
-                cast_as_f64(&expression.compare_against)?,
+                Self::cast_value_to_type(&expression.compare_against, column_kind)?,
             ),
             _ => {
                 unimplemented!()

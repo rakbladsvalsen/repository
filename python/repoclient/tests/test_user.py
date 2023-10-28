@@ -3,7 +3,6 @@ import pytest
 import os
 
 from .util import get_random_string, api_client, admin_user, normal_user
-from ..models.user import UserApiKey
 
 ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin")

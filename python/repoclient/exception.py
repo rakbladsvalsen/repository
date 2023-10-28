@@ -1,6 +1,7 @@
 from __future__ import annotations
 import logging
 from enum import Enum
+from typing import Union, Optional
 from httpx import Response, HTTPStatusError
 
 from pydantic import BaseModel, Field
@@ -31,30 +32,16 @@ class RepositoryKindError(str, Enum):
 
 class RepositoryError(BaseModel):
     status_code: int = Field(None, alias="statusCode")
-    kind: RepositoryKindError | str
+    kind: RepositoryKindError
     detail: str
 
     @staticmethod
-    def _try_extract_request_id(response: Response):
+    def _try_extract_request_id(response: Response) -> Optional[str]:
         try:
             return response.headers.get("request-id", None)
         except Exception as e:
             logger.error("Couldn't extract request ID: %s", e, exc_info=e)
         return None
-
-    @staticmethod
-    def _raise_unexpected_error(response: Response, err: Exception):
-        logger.error(
-            "Server response was: status: %s, response: %s",
-            response.status_code,
-            response.text,
-        )
-        logger.error(
-            "Couldn't deserialize JSON error response: '%s'",
-            response.text,
-            exc_info=err,
-        )
-        raise RuntimeError("Couldn't parse JSON error response")
 
     @staticmethod
     def verify_raise_conditionally(response: Response):
@@ -65,13 +52,17 @@ class RepositoryError(BaseModel):
         except HTTPStatusError as err:
             try:
                 # Try to deserialize error.
-                error: RepositoryError = RepositoryError.parse_obj(response.json())
+                error: RepositoryError = RepositoryError.model_validate(response.json())
             except Exception as nested:
-                RepositoryError._raise_unexpected_error(response, nested)
+                logger.error(
+                    "Server response was: status: %s, response: %s",
+                    response.status_code,
+                    response.text,
+                )
+                raise RuntimeError("Couldn't parse JSON error response") from nested
 
             request_id = RepositoryError._try_extract_request_id(response)
-            if not isinstance(error.kind, RepositoryKindError):
-                logger.error("Unhandled upstream error type: %s", error.kind)
+
             logger.error(
                 "Something went sideways. request id: %s, code: %s, text: %s",
                 request_id,
@@ -82,8 +73,6 @@ class RepositoryError(BaseModel):
 
         except RepositoryException as err:
             raise err from err
-        except Exception as err:
-            RepositoryError._raise_unexpected_error(response, err)
 
 
 class BaseRepositoryException(Exception):

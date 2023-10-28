@@ -10,11 +10,11 @@ from repoclient.util import date_to_utc_iso
 
 
 class UserFormatFilter(ClientBaseModel):
-    format_id_eq: Optional[int] = Field(alias="formatIdEq")
-    user_id_eq: Optional[int] = Field(alias="userId")
-    created_at_eq: Optional[str] = Field(alias="createdAtEq")
-    created_at_gte: Optional[str] = Field(alias="createdAtGte")
-    created_at_lte: Optional[str] = Field(alias="createdAtLte")
+    format_id_eq: Optional[int] = Field(None, alias="formatIdEq")
+    user_id_eq: Optional[int] = Field(None, alias="userId")
+    created_at_eq: Optional[str] = Field(None, alias="createdAtEq")
+    created_at_gte: Optional[str] = Field(None, alias="createdAtGte")
+    created_at_lte: Optional[str] = Field(None, alias="createdAtLte")
 
     def user_id_equals(self, user_id: int):
         self.user_id_eq = user_id

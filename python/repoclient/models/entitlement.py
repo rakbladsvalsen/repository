@@ -67,10 +67,10 @@ class FormatEntitlement(RequestModel):
         # this is also enforced server-side
         assert self.access is not None, "access isn't set"
         response = await client.post(
-            "/entitlement", headers=user.bearer, json=self.dict(by_alias=True)
+            "/entitlement", headers=user.bearer, json=self.model_dump(by_alias=True)
         )
         RepositoryError.verify_raise_conditionally(response)
-        return FormatEntitlement.parse_obj(response.json())
+        return FormatEntitlement.model_validate(response.json())
 
     async def delete(self, client: AsyncClient, user: User):
         """Delete a format.
@@ -91,7 +91,7 @@ class FormatEntitlement(RequestModel):
             "DELETE",
             "/entitlement",
             # no need to pass created_at
-            json=self.dict(by_alias=True, exclude={"created_at"}),
+            json=self.model_dump(by_alias=True, exclude={"created_at"}),
             headers=user.bearer,
         )
         RepositoryError.verify_raise_conditionally(response)

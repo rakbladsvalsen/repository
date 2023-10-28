@@ -1,8 +1,9 @@
+import operator
+
 import repoclient
 import pytest
-import logging
-from pandas import read_csv
-from io import BytesIO
+
+from repoclient import P, FormatUploadSession, FormatUploadSessionFilter
 
 from .util import (
     get_random_string,
@@ -12,9 +13,22 @@ from .util import (
     normal_user,
     load_streaming_query_into_df,
 )
-from repoclient import ColumnSchema
 
-RECORD_PAYLOAD_SIZES: list[int] = [10, 100, 500, 1_000, 5_000, 10_000, 15_000]
+RECORD_PAYLOAD_SIZES: list[int] = [
+    2,
+    10,
+    20,
+    50,
+    100,
+    200,
+    500,
+    1_000,
+    2_000,
+    5_000,
+    8_000,
+    9_000,
+    10_000,
+]
 
 
 @pytest.mark.asyncio
@@ -134,6 +148,86 @@ async def test_entitlement_create_normal_user(
     exc: repoclient.RepositoryException = exc.value
     assert exc.request_id is not None
     assert exc.error.kind == repoclient.RepositoryKindError.ADMIN_ONLY
+
+
+@pytest.mark.parametrize(
+    "operator_expect_second_set",
+    [
+        # Operator | Whether the second upload set is expected to be received
+        (operator.ge, True),  # Greater or equal to (Gte)
+        (operator.lt, False),  # Less than (Lt)
+    ],
+)
+@pytest.mark.parametrize("payload_size", [100])
+@pytest.mark.asyncio
+async def test_query_upload_session_created_at(
+    api_client,
+    admin_user,
+    sample_format: repoclient.Format,
+    payload_size: int,
+    operator_expect_second_set: tuple[operator, bool],
+):
+    operator, expect_second_set = operator_expect_second_set
+    # First upload session
+    data = []
+    for i in range(0, payload_size):
+        entry = {"NumericColumn": i, "StringColumn": f"FirstSet"}
+        data.append(entry)
+    upload = await sample_format.upload_data(api_client, admin_user, data)
+    assert upload.outcome == "Success"
+    assert upload.record_count == payload_size
+
+    # Second upload session
+    # Note that this upload session's NumericColumn starts
+    # just where the last upload session ends.
+    data = []
+    for i in range(payload_size, payload_size * 2):
+        entry = {"NumericColumn": i, "StringColumn": f"SecondSet"}
+        data.append(entry)
+    upload = await sample_format.upload_data(api_client, admin_user, data)
+    assert upload.outcome == "Success"
+    assert upload.record_count == payload_size
+
+    upload_session = FormatUploadSession(
+        [operator(P(FormatUploadSessionFilter.CREATED_AT), upload.created_at)]
+    )
+    query = repoclient.Query(
+        query=[], format_id=[sample_format.id], upload_session=upload_session
+    )
+
+    # use all available pagination strategies
+    for strategy in list(repoclient.PaginationStrategy):
+        seen_records = set()
+        async for item in sample_format.get_data(
+            api_client, admin_user, query, pagination_strategy=strategy
+        ):
+            seen_records.add(item.data["NumericColumn"])
+
+        assert len(seen_records) == payload_size
+        if expect_second_set is True:
+            assert min(seen_records) == payload_size
+            assert max(seen_records) == (payload_size * 2) - 1
+        else:
+            assert min(seen_records) == 0
+            assert max(seen_records) == payload_size - 1
+
+    # Also check dataframe output
+    dataframe = await load_streaming_query_into_df(
+        api_client, admin_user, sample_format, query
+    )
+    dataframe["NumericColumn"] = dataframe["NumericColumn"].astype("float")
+
+    unique_values = len(list(dataframe["NumericColumn"].unique()))
+    assert unique_values == payload_size
+    if expect_second_set is True:
+        assert dataframe["NumericColumn"].min() == payload_size, "Min check failed"
+        assert (
+            dataframe["NumericColumn"].max() == (payload_size * 2) - 1
+        ), "Max check failed"
+        assert len(dataframe.index) == payload_size, "Dataframe has wrong dimensions"
+        assert {"NumericColumn", "StringColumn"}.issubset(
+            set(dataframe.columns)
+        ), "CSV contains unexpected columns"
 
 
 @pytest.mark.parametrize("payload_size", RECORD_PAYLOAD_SIZES)

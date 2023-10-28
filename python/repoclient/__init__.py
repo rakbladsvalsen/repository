@@ -1,13 +1,18 @@
-from repoclient.models.format import Format, ColumnSchema, ColumnKind
-from repoclient.models.user import User
+from repoclient.models.format import (
+    Format,
+    ColumnSchema,
+    ColumnKind,
+    FormatUploadSession,
+    FormatUploadSessionFilter,
+)
+from repoclient.models.user import User, UserApiKey
 from repoclient.models.query import (
     Query,
     QueryGroup,
     QueryGroupKind,
     Column,
-    UploadSessionQuery,
 )
-from repoclient.models.upload_session import UploadSession
+from repoclient.models.upload_session import UploadSession, P
 from repoclient.models.entitlement import (
     FormatEntitlement,
     EntitlementAccessLevel,
@@ -27,9 +32,11 @@ __all__ = [
     "FormatEntitlement",
     "FormatEntitlementQuery",
     "EntitlementAccessLevel",
-    "UploadSession",
-    "UploadSessionQuery",
+    "FormatUploadSession",
+    "FormatUploadSessionFilter",
     "RepositoryException",
     "RepositoryKindError",
     "PaginationStrategy",
+    "UserApiKey",
+    "P",
 ]

@@ -108,7 +108,7 @@ class UserApiKey(RequestModel):
         RepositoryError.verify_raise_conditionally(response)
         json = response.json()
         api_key = json["apiKey"]
-        ret: UserApiKey = UserApiKey.parse_obj(api_key)
+        ret: UserApiKey = UserApiKey.model_validate(api_key)
         ret._token = json["token"]
         ret._parent_user = target_user
         return ret
@@ -116,7 +116,7 @@ class UserApiKey(RequestModel):
 
 class User(RequestModel):
     username: str
-    password: Optional[str]
+    password: Optional[str] = None
     id: Optional[str] = None
     created_at: Optional[datetime] = Field(None, alias="createdAt")
     is_superuser: Optional[bool] = Field(False, alias="isSuperuser")
@@ -135,10 +135,10 @@ class User(RequestModel):
         :return: User
         """
         assert self.password is not None, "password isn't set!"
-        response = await client.post("/login", json=self.dict())
+        response = await client.post("/login", json=self.model_dump())
         RepositoryError.verify_raise_conditionally(response)
         json = response.json()
-        ret: User = User.parse_obj(json["user"])
+        ret: User = User.model_validate(json["user"])
         ret.id = json["user"]["id"]
         ret.token = json["token"]
         ret._checked = True
@@ -148,7 +148,7 @@ class User(RequestModel):
     async def get(cls, client: AsyncClient, user: User, id: int) -> User:
         response = await client.get(f"/user/{id}", headers=user.bearer)
         RepositoryError.verify_raise_conditionally(response)
-        ret = User.parse_obj(response.json())
+        ret = User.model_validate(response.json())
         ret._checked = True
         return ret
 
@@ -174,10 +174,10 @@ class User(RequestModel):
         response = await client.post(
             "/user",
             headers=self.bearer,
-            json=user.dict(by_alias=True, exclude_none=True),
+            json=user.model_dump(by_alias=True, exclude_none=True),
         )
         RepositoryError.verify_raise_conditionally(response)
-        ret: User = User.parse_obj(response.json())
+        ret: User = User.model_validate(response.json())
         # copy over the original user's password
         ret.password = user.password
         ret._checked = True

@@ -1,8 +1,12 @@
+from datetime import datetime
+from typing import Tuple, Any, Callable
+
 import repoclient
 import pytest
+import operator
 
 from .util import get_random_string, api_client, admin_user
-from repoclient import ColumnSchema
+from repoclient import ColumnSchema, FormatUploadSession, FormatUploadSessionFilter, P
 
 
 @pytest.mark.asyncio
@@ -41,3 +45,59 @@ async def test_create_format(api_client, admin_user):
     assert record_count == 0, "format has records"
     # Clean up
     await fmt.delete(api_client, admin_user)
+
+
+@pytest.mark.parametrize(
+    "compare",
+    # (compare against, whether to expect an exception or not)
+    [
+        (123, False),
+        (0, False),
+        ("0", True),
+        (0.0, True),
+        (datetime.now(), True),
+        (None, True),
+    ],
+)
+@pytest.mark.parametrize(
+    "field",
+    [
+        FormatUploadSessionFilter.ID,
+        FormatUploadSessionFilter.RECORD_COUNT,
+        FormatUploadSessionFilter.FORMAT_ID,
+    ],
+)
+@pytest.mark.parametrize(
+    "comp_op",
+    [
+        (operator.ge, "Gte"),
+        (operator.le, "Lte"),
+        (operator.gt, "Gt"),
+        (operator.lt, "Lt"),
+        (operator.eq, "Eq"),
+    ],
+)
+def test_upload_parameters_integer(
+    field: FormatUploadSessionFilter,
+    comp_op: Tuple[Callable[[Any, Any], P], str],
+    compare: Tuple[Any, bool],
+):
+    """Test upload parameter query builder."""
+    op, expected_str_oper = comp_op
+    compare, expect_exception = compare
+
+    # The following is basically the equivalent of doing something like
+    # P("field") > 123, P("field") < 123, etc.
+    conditions = [op(P(field), compare)]
+    if expect_exception:
+        with pytest.raises(AssertionError) as _exc:
+            # This means we're trying to compare something else, like
+            # a string, datetime, etc.
+            _ = FormatUploadSession(args=conditions)
+    else:
+        upload_session_query = FormatUploadSession(args=conditions)
+        result = upload_session_query.prepared_args
+        query_string = upload_session_query.as_url_params()
+        assert len(result) == 1
+        assert query_string == f"{field.value}{expected_str_oper}={compare}"
+        assert result[0] == (f"{field.value}{expected_str_oper}", compare)

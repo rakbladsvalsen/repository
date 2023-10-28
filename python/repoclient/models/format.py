@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import enum
+import sys
 from enum import Enum
 from typing import Optional, Iterator, IO
 from io import IOBase
 from pprint import pformat
+
+import orjson.orjson
 from pydantic import PrivateAttr, Field
 from datetime import datetime
 from pandas import DataFrame
@@ -13,12 +17,18 @@ import logging
 from repoclient.exception import RepositoryError
 from repoclient.models.handler import RequestModel
 from repoclient.models.query import Query
-from repoclient.models.upload_session import UploadSession
+from repoclient.models.upload_session import (
+    UploadSession,
+    QueryParamBase,
+    ComparisonValidator,
+    ComparisonMethod,
+)
 from repoclient.models.user import User
 from repoclient.pagination import PaginatedResponse
 
 logger = logging.getLogger("repoclient")
 
+MAX_SUGGESTED_PAYLOAD_SIZE = 1_000_000
 FORMAT_URL = "/format"
 RECORD_URL = "/record"
 NO_FORMAT_ID_WARN_MSG = """\
@@ -59,8 +69,62 @@ class ColumnSchema(RequestModel):
         raise RuntimeError("Unknown kind")
 
 
+class FormatUploadSessionFilter(str, enum.Enum):
+    """Upload Session filtering utilities.
+
+    You can use any member in this enum to perform
+    filtering on a specific column using `P` objects.
+    Example:
+
+        >>> from repoclient import P, Query
+        >>> upload_session = P(FormatUploadSessionFilter.ID) == "SomeId"
+        >>> query = Query(query=[], upload_session=upload_session)
+        >>> # Now you can use this `query` to filter some data!
+
+    """
+
+    # Upload session ID
+    ID = "id"
+    # Records saved for this upload session
+    RECORD_COUNT = "recordCount"
+    # Filter by format ID (this can also be done
+    # by passing `format_id` to `Query`.
+    FORMAT_ID = "formatId"
+    # Filter upload sessions made by this user.
+    USER_ID = "userId"
+    # Upload sessions with successful outcomes.
+    OUTCOME = "outcome"
+    # Upload sessions created at this time.
+    CREATED_AT = "createdAt"
+
+
+class FormatUploadSession(QueryParamBase):
+    _ALLOWED_COLUMN_CLASS_ = FormatUploadSessionFilter
+
+    _ALLOWED_FIELDS_ = {
+        FormatUploadSessionFilter.ID: ComparisonValidator(
+            int, ComparisonMethod.supports_all()
+        ),
+        FormatUploadSessionFilter.RECORD_COUNT: ComparisonValidator(
+            int, ComparisonMethod.supports_all()
+        ),
+        FormatUploadSessionFilter.FORMAT_ID: ComparisonValidator(
+            int, ComparisonMethod.supports_all()
+        ),
+        FormatUploadSessionFilter.USER_ID: ComparisonValidator(
+            str, [ComparisonMethod.EQUAL]
+        ),
+        FormatUploadSessionFilter.OUTCOME: ComparisonValidator(
+            str, [ComparisonMethod.EQUAL]
+        ),
+        FormatUploadSessionFilter.CREATED_AT: ComparisonValidator(
+            datetime, ComparisonMethod.supports_all()
+        ),
+    }
+
+
 class Format(RequestModel):
-    id: Optional[str]
+    id: Optional[int] = None
     name: str
     description: str
     created_at: Optional[datetime] = None
@@ -111,7 +175,7 @@ class Format(RequestModel):
         :return: Format
         """
         response = await client.post(
-            FORMAT_URL, json=self.dict(by_alias=True), headers=user.bearer
+            FORMAT_URL, json=self.model_dump(by_alias=True), headers=user.bearer
         )
         RepositoryError.verify_raise_conditionally(response)
         self.id = response.json()["id"]
@@ -166,7 +230,7 @@ class Format(RequestModel):
         """
 
         assert self._checked, "Uninitialized format; call create or get first"
-        json_query = query.dict(by_alias=True)
+        json_query = query.model_dump(by_alias=True)
         return await PaginatedResponse.get_count(
             upstream=f"{RECORD_URL}/filter",
             client=client,
@@ -250,6 +314,7 @@ class Format(RequestModel):
         the available data using only a single connection to a bytes-like
         object.
 
+
         WARNING: It's your responsibility to manage the passed buffer
         (`output`). This includes but is not limited to taking care of memory
         management and async/sync IO writes.
@@ -266,7 +331,7 @@ class Format(RequestModel):
 
         assert isinstance(output, IOBase), "`output` isn't a bytes-like object"
 
-        json_query = query.dict(by_alias=True)
+        json_query = query.model_dump(by_alias=True)
         output.seek(0)
 
         start = datetime.now()
@@ -315,7 +380,7 @@ class Format(RequestModel):
         assert self._checked, "Uninitialized format; call create or get first"
         if query.format_id is None:
             logger.warning(NO_FORMAT_ID_WARN_MSG)
-        json_query = query.dict(by_alias=True)
+        json_query = query.model_dump(by_alias=True)
 
         async for items in PaginatedResponse.get_all(
             upstream=f"{RECORD_URL}/filter",
@@ -347,10 +412,22 @@ class Format(RequestModel):
         """
         assert self._checked, "Uninitialized format; call create or get first"
         assert isinstance(data, list), "`data` must be an array of dicts!"
+        assert len(data) > 0, "`data` must not be an empty list!"
         assert all(
             isinstance(i, dict) for i in data
         ), "expected list of dicts, got something else"
         payload = {"formatId": int(self.id), "data": data}
+        json = orjson.orjson.dumps(payload)
+        payload_size = len(json)
+        logger.debug("JSON payload size: %.2f MiB", payload_size / (1024 * 1024))
+
+        if payload_size > MAX_SUGGESTED_PAYLOAD_SIZE:
+            logger.warning(
+                "Payload exceeds the suggested size (%s bytes > %s). "
+                "Please consider uploading your data in smaller chunks.",
+                payload_size,
+                MAX_SUGGESTED_PAYLOAD_SIZE,
+            )
         response = await client.post(RECORD_URL, json=payload, headers=user.bearer)
         RepositoryError.verify_raise_conditionally(response)
-        return UploadSession.parse_obj(response.json())
+        return UploadSession.model_validate(response.json())
