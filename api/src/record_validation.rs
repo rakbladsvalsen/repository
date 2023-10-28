@@ -90,8 +90,6 @@ impl InboundRecordData {
                             .unwrap_or(true),
                     }
                 } else {
-                    // Handle the case where the key is not found in the schema
-                    error!("fatal unhandled error: couldn't find '{key}' in schema {schema:?}");
                     true
                 }
             }) {
@@ -105,7 +103,6 @@ impl InboundRecordData {
                 if let Some(value) = hmap.get(*key).and_then(|v| v.as_str()) {
                     !regex.is_match(value)
                 } else {
-                    error!("fatal unhandled error: couldn't find '{key}' in {hmap:?}");
                     true
                 }
             }) {

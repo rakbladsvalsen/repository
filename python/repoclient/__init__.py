@@ -19,7 +19,7 @@ from repoclient.models.entitlement import (
     FormatEntitlementQuery,
 )
 from repoclient.pagination import PaginatedResponse, PaginationStrategy
-from repoclient.exception import RepositoryException, RepositoryKindError
+from repoclient.exception import RepositoryException
 
 __all__ = [
     "Format",
@@ -35,7 +35,6 @@ __all__ = [
     "FormatUploadSession",
     "FormatUploadSessionFilter",
     "RepositoryException",
-    "RepositoryKindError",
     "PaginationStrategy",
     "UserApiKey",
     "P",

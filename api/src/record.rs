@@ -2,7 +2,7 @@ use crate::{
     common::{timed, DebugMode},
     conf::{
         BULK_INSERT_CHUNK_SIZE, DB_CSV_STREAM_WORKERS, DB_CSV_TRANSFORM_WORKERS,
-        DB_CSV_WORKER_QUEUE_DEPTH, DB_POOL,
+        DB_CSV_WORKER_QUEUE_DEPTH, DB_POOL, LIMIT_SERVICE,
     },
     core_middleware::auth::AuthMiddleware,
     error::{APIError, APIResponse, AsAPIResult},
@@ -77,10 +77,21 @@ async fn get_all_filtered_records_stream(
         *DB_CSV_TRANSFORM_WORKERS,
     );
 
-    let stream =
-        RecordQuery::filter_readable_records_stream(db, auth.into_inner(), &filter, query, config)
-            .await?
-            .map(|it| Ok::<_, APIError>(web::Bytes::from(it)));
+    let mut limit_grant = None;
+    if !auth.is_superuser {
+        limit_grant = Some(LIMIT_SERVICE.new_grant_for_key(&auth.username)?);
+    }
+
+    let stream = RecordQuery::filter_readable_records_stream(
+        db,
+        auth.into_inner(),
+        &filter,
+        query,
+        config,
+        limit_grant,
+    )
+    .await?
+    .map(|it| Ok::<_, APIError>(web::Bytes::from(it)));
 
     HttpResponse::Ok()
         .append_header(("Content-Type", "text/csv"))

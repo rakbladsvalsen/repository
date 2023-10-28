@@ -1,7 +1,6 @@
 from __future__ import annotations
 import logging
-from enum import Enum
-from typing import Union, Optional
+from typing import Optional
 from httpx import Response, HTTPStatusError
 
 from pydantic import BaseModel, Field
@@ -9,30 +8,9 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger(__name__)
 
 
-class RepositoryKindError(str, Enum):
-    DUPLICATE_ERROR = "DuplicateError"
-    BAD_REQUEST = "DuplicateError"
-    VALIDATION_FAILURE = "ValidationFailure"
-    SERVER_ERROR = "ServerError"
-    NOT_FOUND = "NotFound"
-    INACTIVE_USER = "InactiveUser"
-    INACTIVE_KEY = "InactiveKey"
-    INVALID_CREDENTIALS = "InvalidCredentials"
-    INVALID_TOKEN = "InvalidToken"
-    MISSING_AUTH_HEADER = "MissingAuthHeader"
-    ADMIN_ONLY = "AdminOnlyResource"
-    INSUFFICIENT_PERM = "InsufficientPermissions"
-    INVALID_OPERATION = "InvalidOperation"
-    CONFLICTING_OPERATION = "ConflictingOperation"
-    CAST_ERROR = "CastError"
-    INVALID_QUERY = "InvalidQuery"
-    INVALID_PAGE_SIZE = "InvalidPageSize"
-    UNHANDLED_FATAL_ERROR = "<FATAL UNHANDLED ERROR>"
-
-
 class RepositoryError(BaseModel):
     status_code: int = Field(None, alias="statusCode")
-    kind: RepositoryKindError
+    kind: str
     detail: str
 
     @staticmethod

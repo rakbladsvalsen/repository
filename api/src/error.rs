@@ -4,7 +4,8 @@ use actix_web::{
     web::{self, JsonConfig, PathConfig, QueryConfig},
     HttpResponse,
 };
-use central_repository_dao::error::DatabaseQueryError;
+use central_repository_dao::CoreError;
+use entity::error::DatabaseQueryError;
 use log::{error, info};
 use sea_orm::{DbErr, RuntimeErr};
 use serde::Serialize;
@@ -42,7 +43,7 @@ pub enum ValidationFailureKind {
     RegexMatchFailure,
 }
 
-#[derive(Error, Debug, Serialize, AsRefStr, Clone)]
+#[derive(Error, Debug, AsRefStr)]
 pub enum APIError {
     #[error("An item with similar data already exists.")]
     DuplicateError,
@@ -78,6 +79,14 @@ pub enum APIError {
     InvalidQuery(String),
     #[error("Invalid pagination size: {0}")]
     InvalidPageSize(String),
+    #[error(transparent)]
+    CoreError(#[from] CoreError),
+    #[error(transparent)]
+    DbErr(#[from] DbErr),
+    #[error(transparent)]
+    BlockingError(#[from] BlockingError),
+    #[error(transparent)]
+    DatabaseQueryError(#[from] DatabaseQueryError),
 }
 
 impl APIError {
@@ -100,22 +109,32 @@ impl APIError {
             Self::InvalidPageSize(_) => StatusCode::BAD_REQUEST,
             Self::InactiveUser => StatusCode::UNAUTHORIZED,
             Self::InactiveKey => StatusCode::UNAUTHORIZED,
+            Self::BlockingError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::CoreError(err) => match err {
+                CoreError::GrantError(_, _) => StatusCode::BAD_REQUEST,
+                CoreError::PoisonError => StatusCode::INTERNAL_SERVER_ERROR,
+                CoreError::DatabaseQueryError(e) => APIError::from(e).status_code(),
+            },
+            Self::DbErr(e) => APIError::from(e).status_code(),
+            Self::DatabaseQueryError(e) => APIError::from(e).status_code(),
+        }
+    }
+
+    pub fn get_kind(&self) -> String {
+        match self {
+            Self::DatabaseQueryError(DatabaseQueryError::DbErr(e)) => {
+                APIError::from(e).as_ref().into()
+            }
+            Self::DatabaseQueryError(e) => e.as_ref().into(),
+            Self::CoreError(CoreError::DatabaseQueryError(e)) => e.as_ref().into(),
+            Self::CoreError(e) => e.as_ref().into(),
+            other => other.as_ref().into(),
         }
     }
 }
 
-impl From<DatabaseQueryError> for APIError {
-    fn from(value: DatabaseQueryError) -> Self {
-        match value {
-            // this is just a regular seaorm DbErr.
-            DatabaseQueryError::NestedDBError(err) => APIError::from(err),
-            _ => APIError::InvalidQuery(value.to_string()),
-        }
-    }
-}
-
-impl From<DbErr> for APIError {
-    fn from(error: DbErr) -> APIError {
+impl From<&DbErr> for APIError {
+    fn from(error: &DbErr) -> APIError {
         match error {
             DbErr::Query(RuntimeErr::SqlxError(SQLXError::Database(err))) => {
                 // SQLX::Database errors don't have any enums inside, so there's
@@ -127,20 +146,23 @@ impl From<DbErr> for APIError {
                     return APIError::DuplicateError;
                 } else if err_as_string.contains("invalid regular expression") {
                     info!("got invalid regular expression");
-                    return DatabaseQueryError::InvalidUsage("malformed regular expression".into())
-                        .into();
+                    return APIError::InvalidQuery("regex is malformed".into());
                 }
                 handle_fatal!("SqlxError", err, APIError::ServerError)
             }
-            DbErr::RecordNotFound(err) => APIError::NotFound(err),
+            DbErr::RecordNotFound(err) => APIError::NotFound(err.to_string()),
             unhandled => handle_fatal!("unhandled db error", unhandled, APIError::ServerError),
         }
     }
 }
 
-impl From<BlockingError> for APIError {
-    fn from(error: BlockingError) -> APIError {
-        handle_fatal!("blocking error", error, APIError::ServerError)
+impl From<&DatabaseQueryError> for APIError {
+    fn from(value: &DatabaseQueryError) -> Self {
+        match value {
+            // this is just a regular seaorm DbErr.
+            DatabaseQueryError::DbErr(err) => APIError::from(err),
+            _ => APIError::InvalidQuery(value.to_string()),
+        }
     }
 }
 
@@ -154,7 +176,7 @@ impl error::ResponseError for APIError {
         let out = OutboundAPIError {
             status_code: u16::from(self.status_code()),
             detail: Some(self.to_string()),
-            kind: self.as_ref().into(),
+            kind: self.get_kind(),
         };
         let mut response = HttpResponse::build(self.status_code());
         if self.status_code() == StatusCode::UNAUTHORIZED {

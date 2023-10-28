@@ -1,3 +1,4 @@
+use central_repository_dao::LimitController;
 use envconfig::Envconfig;
 use jsonwebtoken::{DecodingKey, EncodingKey};
 use lazy_static::lazy_static;
@@ -31,6 +32,7 @@ lazy_static! {
     pub static ref DB_CSV_WORKER_QUEUE_DEPTH: usize = CONFIG.db_csv_worker_queue_depth as usize;
     pub static ref MAX_API_KEYS_PER_USER: usize = CONFIG.max_api_keys_per_user as usize;
     pub static ref TOKEN_API_KEY_EXPIRATION_HOURS: usize = CONFIG.token_api_key_expiration_hours as usize;
+    pub static ref LIMIT_SERVICE: LimitController = LimitController::new(CONFIG.db_max_streams_per_user);
 }
 
 fn get_coding_keys(key: &String) -> Result<(EncodingKey, DecodingKey), Box<dyn Error>> {
@@ -111,6 +113,9 @@ pub struct Config {
     // set by default to 1 month (24 * 30 = 720)
     #[envconfig(from = "TOKEN_API_KEY_EXPIRATION_HOURS", default = "720")]
     pub token_api_key_expiration_hours: u64,
+
+    #[envconfig(from = "DB_MAX_STREAMS_PER_USER", default = "2")]
+    pub db_max_streams_per_user: u64,
 }
 
 impl Config {
@@ -160,6 +165,9 @@ impl Config {
         }
         if self.token_api_key_expiration_hours == 0 {
             return Err("TOKEN_API_KEY_EXPIRATION_HOURS must be greater than 0".into());
+        }
+        if self.db_max_streams_per_user == 0 {
+            return Err("DB_MAX_STREAMS_PER_USER must be greater than 0".into());
         }
         Ok(())
     }

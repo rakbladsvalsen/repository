@@ -14,7 +14,7 @@ from pandas import DataFrame
 from httpx import AsyncClient
 import logging
 
-from repoclient.exception import RepositoryError
+from repoclient.exception import RepositoryError, RepositoryException
 from repoclient.models.handler import RequestModel
 from repoclient.models.query import Query
 from repoclient.models.upload_session import (
@@ -341,7 +341,15 @@ class Format(RequestModel):
         async with client.stream(
             "POST", f"{RECORD_URL}/filter-stream", json=json_query, headers=user.bearer
         ) as response:
-            RepositoryError.verify_raise_conditionally(response)
+
+            if response.status_code != 200:
+                req_id = response.headers.get("request-id", "N/A")
+                data = await response.aread()
+                json = orjson.loads(data)
+                error = RepositoryError.model_validate(json)
+                raise RepositoryException(error, req_id)
+                # raise AssertionError(response)
+            # TODO: Use RepositoryError.verify_raise_conditionally(response)
 
             async for data in response.aiter_bytes(chunk_size=chunk_size):
                 read_bytes += len(data)

@@ -19,11 +19,5 @@ pub enum DatabaseQueryError {
     #[error("Regex error")]
     InvalidRegex,
     #[error("Internal DB error: {0}")]
-    NestedDBError(#[source] DbErr),
-}
-
-impl From<DbErr> for DatabaseQueryError {
-    fn from(value: DbErr) -> Self {
-        Self::NestedDBError(value)
-    }
+    DbErr(#[from] DbErr),
 }

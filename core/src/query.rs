@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use crate::{
-    pagination_impl::GetAllTrait, GetAllPaginated, PaginationOptions, PreparedSearchQuery,
-    SearchQuery,
+    pagination_impl::GetAllTrait, CoreError, GetAllPaginated, LimitGrant, PaginationOptions,
+    PreparedSearchQuery, SearchQuery,
 };
 use ::entity::{
     api_key,
@@ -112,8 +112,12 @@ impl RecordQuery {
         filters: &record::ModelAsQuery,
         query: SearchQuery,
         parallel_stream_config: ParallelStreamConfig,
-    ) -> Result<impl Stream<Item = Vec<u8>>, DatabaseQueryError> {
-        let prepared_search = query.get_readable_formats_for_user(&auth, db).await?;
+        limit_grant: Option<LimitGrant>,
+    ) -> Result<impl Stream<Item = Vec<u8>>, CoreError> {
+        let prepared_search = query
+            .get_readable_formats_for_user(&auth, db)
+            .await
+            .map_err(DatabaseQueryError::from)?;
         let schema_columns = Arc::new(prepared_search.schema_columns());
 
         let mut headers = schema_columns
@@ -137,7 +141,10 @@ impl RecordQuery {
                 "streaming: using {} streams, now waiting for COUNT",
                 parallel_stream_config.num_streams
             );
-            let num_items = RecordQuery::num_items(db, &mut (select.clone())).await?;
+            let num_items = RecordQuery::num_items(db, &mut (select.clone()))
+                .await
+                .map_err(DatabaseQueryError::from)?;
+
             limit =
                 Some((num_items as f64 / parallel_stream_config.num_streams as f64).ceil() as u64); // page size
             debug!(
@@ -211,6 +218,9 @@ impl RecordQuery {
             while let Ok(item) = rx_result.recv_async().await {
                 yield item;
             }
+
+            info!("finished streaming");
+            let _limit_grant = limit_grant;
         }))
     }
 }
