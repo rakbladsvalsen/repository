@@ -16,7 +16,9 @@ use ::entity::{
 use async_stream::stream;
 use futures::{Stream, StreamExt};
 use log::{debug, info};
+use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 use sea_orm::*;
+use tracing::Span;
 use uuid::Uuid;
 
 // Query objects
@@ -188,7 +190,7 @@ impl RecordQuery {
                 while let Ok(item) = rx_db_stream_thread.recv_async().await {
                     processed += 1;
                     let mut row = schema_columns_thread
-                        .iter()
+                        .par_iter()
                         .map(|column| {
                             item.data
                                 .get(column)
@@ -212,7 +214,13 @@ impl RecordQuery {
         drop(tx_result);
         drop(rx_db_stream);
 
+        let current_span = Span::current();
+
         Ok(stream!({
+            let _guard = current_span.enter();
+            // Capture user grant for this streaming operation
+            let _limit_grant = limit_grant;
+
             yield headers.into_bytes();
 
             while let Ok(item) = rx_result.recv_async().await {
@@ -220,7 +228,6 @@ impl RecordQuery {
             }
 
             info!("finished streaming");
-            let _limit_grant = limit_grant;
         }))
     }
 }

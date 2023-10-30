@@ -55,7 +55,7 @@ async def test_upload_record_admin_wrong_type(
         # user cannot upload because they have insufficient perms
     exc: repoclient.RepositoryException = exc.value
     assert exc.request_id is not None
-    assert exc.error.kind == repoclient.RepositoryKindError.VALIDATION_FAILURE
+    assert exc.error.kind == "ValidationFailure"
 
 
 @pytest.mark.asyncio
@@ -68,7 +68,7 @@ async def test_upload_record_no_entitlement(
         _upload = await sample_format.upload_data(api_client, normal_user, data)
     exc: repoclient.RepositoryException = exc.value
     assert exc.request_id is not None
-    assert exc.error.kind == repoclient.RepositoryKindError.INSUFFICIENT_PERM
+    assert exc.error.kind == "InsufficientPermissions"
 
 
 @pytest.mark.asyncio
@@ -93,7 +93,7 @@ async def test_entitlement_read_only(
     await entitlement.delete(api_client, admin_user)
     exc: repoclient.RepositoryException = exc.value
     assert exc.request_id is not None
-    assert exc.error.kind == repoclient.RepositoryKindError.INSUFFICIENT_PERM
+    assert exc.error.kind == "InsufficientPermissions"
 
 
 async def test_entitlement_read_write(
@@ -147,7 +147,7 @@ async def test_entitlement_create_normal_user(
     # can't create stuff without admin perms
     exc: repoclient.RepositoryException = exc.value
     assert exc.request_id is not None
-    assert exc.error.kind == repoclient.RepositoryKindError.ADMIN_ONLY
+    assert exc.error.kind == "AdminOnlyResource"
 
 
 @pytest.mark.parametrize(

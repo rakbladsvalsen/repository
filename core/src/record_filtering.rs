@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use better_debug::BetterDebug;
 use chrono::Utc;
 use entity::{
     error::DatabaseQueryError,
@@ -102,7 +103,7 @@ pub fn str_to_isodate(string: &str) -> Option<chrono::DateTime<Utc>> {
     None
 }
 
-#[derive(Serialize, Deserialize, Default, Clone)]
+#[derive(Serialize, Deserialize, Default, Clone, BetterDebug)]
 #[serde(rename_all = "camelCase")]
 /// A single search argument. This basically allows
 /// users to define matches against a specific column.
@@ -110,32 +111,20 @@ pub struct SearchArguments {
     column: String,
     join_kind: Option<JoinKind>,
     comparison_operator: ComparisonOperator,
+    #[better_debug(cust_formatter = "search_args_fmt_compare_against")]
     compare_against: serde_json::Value,
 }
 
-/// The default Debug implementation shows all the array items
-/// (if the user passes an array). That will easily clutter the debug
-/// log, so this custom Debug impl limits the maximum printable
-/// array items to DEBUG_ARRAY_MAX_LOGGED.
-impl core::fmt::Debug for SearchArguments {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        let mut dbg_struct = f.debug_struct("SearchArguments");
-        dbg_struct
-            .field("column", &self.column)
-            .field("join_kind", &self.join_kind)
-            .field("comparison_operator", &self.comparison_operator);
-        if let Some(against) = &self.compare_against.as_array() {
-            if against.len() > DEBUG_ARRAY_MAX_LOGGED {
-                let msg = format!("<{} values in array>", against.len());
-                dbg_struct.field("compare_against", &msg);
-            } else {
-                dbg_struct.field("compare_against", &self.compare_against);
-            }
-        } else {
-            dbg_struct.field("compare_against", &self.compare_against);
+/// Avoid logging potentially a large array. This can impact
+/// performance and can also clutter the log.
+fn search_args_fmt_compare_against(s: &SearchArguments) -> Option<String> {
+    if let Some(array) = s.compare_against.as_array() {
+        if array.len() > DEBUG_ARRAY_MAX_LOGGED {
+            let msg = format!("<{} values in array>", array.len());
+            return Some(msg);
         }
-        dbg_struct.finish()
     }
+    None
 }
 
 impl SearchArguments {

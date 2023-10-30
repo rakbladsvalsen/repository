@@ -1,3 +1,4 @@
+use better_debug::BetterDebug;
 use central_repository_dao::LimitController;
 use envconfig::Envconfig;
 use jsonwebtoken::{DecodingKey, EncodingKey};
@@ -50,8 +51,9 @@ cat <PRIV_KEY>.pem | openssl pkey -noout -text'",
     Ok((encoding_key, decoding_key))
 }
 
-#[derive(Envconfig, Debug)]
+#[derive(Envconfig, BetterDebug)]
 pub struct Config {
+    #[better_debug(secret)]
     #[envconfig(from = "DATABASE_URL")]
     pub database_url: String,
 
@@ -67,6 +69,7 @@ pub struct Config {
     #[envconfig(from = "DB_POOL_MIN_CONN", default = "10")]
     pub db_pool_min_conn: u32,
 
+    #[better_debug(secret)]
     #[envconfig(from = "ED25519_SIGNING_KEY")]
     pub ed25519_signing_key: String,
 
