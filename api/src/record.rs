@@ -64,6 +64,7 @@ async fn get_all_filtered_records_stream(
     query.validate()?;
     // get this query's inner contents
     let query = query.into_inner();
+    info!("query: {:#?}", query);
     let filter = filter.into_inner();
     let db = DB_POOL.get().expect("database is not initialized");
     if **debug {
@@ -171,7 +172,7 @@ async fn create_record(inbound: Json<InboundRecordData>, auth: ReqData<UserModel
                 .into_par_iter()
                 .map(|chunk| RecordMutation::create_many(db, chunk.to_owned()))
                 .collect::<Vec<_>>();
-            debug!(
+            info!(
                 "Preparing {request_entries} entries/{} chunks = {} insert jobs.",
                 *BULK_INSERT_CHUNK_SIZE,
                 insert_tasks.len()

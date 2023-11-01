@@ -16,7 +16,6 @@ use ::entity::{
 use async_stream::stream;
 use futures::{Stream, StreamExt};
 use log::{debug, info};
-use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 use sea_orm::*;
 use tracing::Span;
 use uuid::Uuid;
@@ -190,7 +189,7 @@ impl RecordQuery {
                 while let Ok(item) = rx_db_stream_thread.recv_async().await {
                     processed += 1;
                     let mut row = schema_columns_thread
-                        .par_iter()
+                        .iter()
                         .map(|column| {
                             item.data
                                 .get(column)

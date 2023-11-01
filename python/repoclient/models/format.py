@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import enum
-import sys
 from enum import Enum
 from typing import Optional, Iterator, IO
 from io import IOBase
@@ -28,6 +27,8 @@ from repoclient.pagination import PaginatedResponse
 
 logger = logging.getLogger("repoclient")
 
+UNIX_EPOCH_DATE = "1970-00-00T00:00:00.000000+00:00"
+
 MAX_SUGGESTED_PAYLOAD_SIZE = 1_000_000
 FORMAT_URL = "/format"
 RECORD_URL = "/record"
@@ -46,6 +47,7 @@ class Record(RequestModel):
 class ColumnKind(str, Enum):
     NUMBER = "Number"
     STRING = "String"
+    DATETIME = "Datetime"
 
 
 class ColumnSchema(RequestModel):
@@ -60,12 +62,18 @@ class ColumnSchema(RequestModel):
     def string(cls, name: str):
         return cls(name=name, kind=ColumnKind.STRING)
 
+    @classmethod
+    def datetime(cls, name: str):
+        return cls(name=name, kind=ColumnKind.DATETIME)
+
     def get_python_type(self) -> str:
         # Return the pandas dtype of this column.
         if self.kind is ColumnKind.NUMBER:
             return float
         elif self.kind is ColumnKind.STRING:
             return str
+        elif self.kind is ColumnKind.DATETIME:
+            return "datetime64[ns, UTC]"
         raise RuntimeError("Unknown kind")
 
 
@@ -239,6 +247,94 @@ class Format(RequestModel):
             method="POST",
         )
 
+    async def upload_from_dataframe(
+        self,
+        client: AsyncClient,
+        user: User,
+        df: DataFrame,
+        upload_chunks: int = 5_000,
+        cast_types=True,
+        fill_na=False,
+    ) -> list[UploadSession]:
+        """Upload data from this dataframe into this format.
+
+        :param client: HTTP Client
+        :param user: User
+        :param df: Pandas dataframe
+        :param upload_chunks: Chunk the dataframe in this many pieces before uploading data
+        :param cast_types: Whether to enable explicit data typecasting
+        :param fill_na: Whether to fill missing/empty values or not
+        :return: A list of upload sessions
+        """
+        assert self._checked, "Uninitialized format; call create or get first"
+        assert df.shape[1] == len(
+            self.schema_ref
+        ), "Dataframe has wrong number of columns"
+
+        df_columns = set(list(df.columns))
+        format_columns = set(col.name for col in self.schema_ref)
+        assert (
+            df_columns == format_columns
+        ), "Dataframe and format have different columns."
+
+        for column in df.columns:
+            na_count = df[column].isna().sum()
+            if na_count > 0:
+                logger.warning("Column %s contains %s na values", column, na_count)
+                assert fill_na is True, (
+                    f"Column {column} contains {na_count} and `fill_na` is set"
+                    " to False. This will result in a failed upload; refusing to"
+                    " continue."
+                )
+
+        if fill_na is True:
+            logger.warning(
+                "`fill_na` is enabled. `fill_na` will fill missing values "
+                "with 0's or empty spaces depending on the column type. "
+                " This might have collateral effects on the uploaded data."
+            )
+
+        for column in self.schema_ref:
+            if fill_na is True:
+                if column.kind is ColumnKind.STRING:
+                    df[column.name].fillna(value="", inplace=True)
+                elif column.kind is ColumnKind.NUMBER:
+                    df[column.name].fillna(value=0, inplace=True)
+                elif column.kind is ColumnKind.DATETIME:
+                    df[column.name].fillna(value=UNIX_EPOCH_DATE, inplace=True)
+                logger.warning("filled na for %s", column.name)
+
+            if cast_types is True:
+                df[column.name] = df[column.name].astype(column.get_python_type())
+                if column.kind is ColumnKind.DATETIME:
+                    # Convert timestamps to ISO format
+                    df[column.name] = df[column.name].apply(
+                        lambda x: x.isoformat() if x is not None else None
+                    )
+                logger.debug("casted %s to %s", column.name, column.get_python_type())
+
+        logger.debug("Successfully applied dataframe transformations: %s", df)
+
+        upload_sessions = []
+        records = []
+        # Convert dataframe to list of dictionaries
+        for index, row in df.iterrows():
+            records.append(row.to_dict())
+
+            if index % upload_chunks == 0:
+                logger.debug("chunking upload after %d records", index)
+                response = await client.post(
+                    f"{RECORD_URL}",
+                    json={"data": records, "formatId": self.id},
+                    headers=user.bearer,
+                )
+                RepositoryError.verify_raise_conditionally(response)
+                session = UploadSession(**response.json())
+                upload_sessions.append(session)
+                records.clear()
+
+        return upload_sessions
+
     async def get_data_pandas_dangerous(
         self, client: AsyncClient, user: User, query: Query, *args, **kwargs
     ) -> DataFrame:
@@ -341,7 +437,6 @@ class Format(RequestModel):
         async with client.stream(
             "POST", f"{RECORD_URL}/filter-stream", json=json_query, headers=user.bearer
         ) as response:
-
             if response.status_code != 200:
                 req_id = response.headers.get("request-id", "N/A")
                 data = await response.aread()
@@ -355,7 +450,8 @@ class Format(RequestModel):
                 read_bytes += len(data)
                 output.write(data)
 
-        elapsed = (datetime.now() - start).microseconds / 100_000
+        elapsed = datetime.now() - start
+        elapsed = elapsed.total_seconds() + elapsed.microseconds / 1000000
         read_mebibyte = read_bytes / (1024 * 1024)
         logger.info(
             "csv stream: %.2f MiB, %.2f MiB/s avg (%s bytes in %.3fs)",

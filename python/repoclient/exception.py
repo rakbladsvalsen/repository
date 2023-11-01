@@ -37,7 +37,9 @@ class RepositoryError(BaseModel):
                     response.status_code,
                     response.text,
                 )
-                raise RuntimeError("Couldn't parse JSON error response") from nested
+                raise RuntimeError(
+                    f"Couldn't parse JSON error response: '{response.text}'"
+                ) from nested
 
             request_id = RepositoryError._try_extract_request_id(response)
 
