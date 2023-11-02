@@ -2,14 +2,15 @@ from __future__ import annotations
 
 import enum
 from enum import Enum
-from typing import Optional, Iterator, IO
-from io import IOBase
+from typing import Optional, Iterator, IO, Any
+from io import IOBase, BytesIO
 from pprint import pformat
 
 import orjson.orjson
-from pydantic import PrivateAttr, Field
+from pydantic import PrivateAttr, Field, field_serializer
+from typing import Pattern
 from datetime import datetime
-from pandas import DataFrame
+from pandas import DataFrame, read_csv
 from httpx import AsyncClient
 import logging
 
@@ -29,7 +30,7 @@ logger = logging.getLogger("repoclient")
 
 UNIX_EPOCH_DATE = "1970-00-00T00:00:00.000000+00:00"
 
-MAX_SUGGESTED_PAYLOAD_SIZE = 1_000_000
+MAX_SUGGESTED_PAYLOAD_SIZE = 10 * (1024 * 1024)  # 10MiB
 FORMAT_URL = "/format"
 RECORD_URL = "/record"
 NO_FORMAT_ID_WARN_MSG = """\
@@ -53,14 +54,21 @@ class ColumnKind(str, Enum):
 class ColumnSchema(RequestModel):
     name: str
     kind: ColumnKind
+    regex: Optional[Pattern] = None
 
     @classmethod
     def numeric(cls, name: str):
         return cls(name=name, kind=ColumnKind.NUMBER)
 
+    @field_serializer("regex")
+    def serialize_dt(self, regex: Optional[Pattern], _info):
+        if regex is None:
+            return None
+        return str(regex.pattern)
+
     @classmethod
-    def string(cls, name: str):
-        return cls(name=name, kind=ColumnKind.STRING)
+    def string(cls, name: str, regex: Optional[Pattern] = None):
+        return cls(name=name, kind=ColumnKind.STRING, regex=regex)
 
     @classmethod
     def datetime(cls, name: str):
@@ -247,12 +255,59 @@ class Format(RequestModel):
             method="POST",
         )
 
+    async def get_stream_data_pandas_dangerous(
+        self,
+        client: AsyncClient,
+        user: User,
+        query: Query,
+        chunk_size: int = 10 * (1024 * 1024),
+        supress_warning: bool = False,
+    ) -> DataFrame:
+        """
+        Get data from this format and write it to a CSV file.
+
+        This method internally uses `get_data_csv_stream` to get the
+        data and then converts it to a Pandas dataframe. This method
+        might be a little bit faster than `get_data_pandas_dangerous()`.
+
+        However, you won't be able to make multiple stream queries at
+        the same time since this has a higher cost at the database level.
+        This limitation is enforced server-side on a per-user basis.
+
+        :param client: HTTP Client
+        :param user: User
+        :param query: Query
+        :param chunk_size: Chunk size (default: 10MiB)
+        :param supress_warning: Whether to supress warnings or not
+        :return:
+        """
+        assert self._checked, "Uninitialized format; call create or get first"
+        if not supress_warning:
+            logger.warning(
+                "This method can potentially load a lot of data into memory. "
+                "Please use `get_data_csv_stream` to use your own IO buffer,"
+                " or pass `supress_warning` to hide this warning."
+            )
+
+        buffer = BytesIO()
+        await self.get_data_csv_stream(client, user, query, buffer, chunk_size)
+        logger.debug(
+            "Loading into dataframe and setting types for %s column(s)",
+            len(self.schema_ref),
+        )
+        buffer.seek(0)
+        df = read_csv(buffer, dtype=object)
+
+        for column in self.schema_ref:
+            df[column.name] = df[column.name].astype(column.get_python_type())
+
+        return df
+
     async def upload_from_dataframe(
         self,
         client: AsyncClient,
         user: User,
         df: DataFrame,
-        upload_chunks: int = 5_000,
         cast_types=True,
         fill_na=False,
     ) -> list[UploadSession]:
@@ -261,7 +316,6 @@ class Format(RequestModel):
         :param client: HTTP Client
         :param user: User
         :param df: Pandas dataframe
-        :param upload_chunks: Chunk the dataframe in this many pieces before uploading data
         :param cast_types: Whether to enable explicit data typecasting
         :param fill_na: Whether to fill missing/empty values or not
         :return: A list of upload sessions
@@ -280,11 +334,11 @@ class Format(RequestModel):
         for column in df.columns:
             na_count = df[column].isna().sum()
             if na_count > 0:
-                logger.warning("Column %s contains %s na values", column, na_count)
+                logger.warning("Column %s contains %s null values", column, na_count)
                 assert fill_na is True, (
-                    f"Column {column} contains {na_count} and `fill_na` is set"
-                    " to False. This will result in a failed upload; refusing to"
-                    " continue."
+                    f"Column {column} contains {na_count} nulls and `fill_na` is "
+                    " set to False. This will result in a failed upload, "
+                    " refusing to continue."
                 )
 
         if fill_na is True:
@@ -313,32 +367,19 @@ class Format(RequestModel):
                     )
                 logger.debug("casted %s to %s", column.name, column.get_python_type())
 
-        logger.debug("Successfully applied dataframe transformations: %s", df)
+        logger.debug("Successfully applied dataframe transformations: \n%s", df)
 
-        upload_sessions = []
-        records = []
         # Convert dataframe to list of dictionaries
-        for index, row in df.iterrows():
-            records.append(row.to_dict())
-
-            if index % upload_chunks == 0:
-                logger.debug("chunking upload after %d records", index)
-                response = await client.post(
-                    f"{RECORD_URL}",
-                    json={"data": records, "formatId": self.id},
-                    headers=user.bearer,
-                )
-                RepositoryError.verify_raise_conditionally(response)
-                session = UploadSession(**response.json())
-                upload_sessions.append(session)
-                records.clear()
-
-        return upload_sessions
+        records: list[dict[str, Any]] = df.to_dict(orient="records")
+        return await self.upload_data(client, user, records)
 
     async def get_data_pandas_dangerous(
         self, client: AsyncClient, user: User, query: Query, *args, **kwargs
     ) -> DataFrame:
         """Get all data from the repository in a pandas DataFrame.
+
+        This function will use all the pagination features for that purpose,
+        which means you can use a very aggressive `per_page` value.
 
         For documentation, please see the related function: `get_data`.
         This function accepts exactly the same arguments.
@@ -358,7 +399,7 @@ class Format(RequestModel):
             " resource exhaustion when loading large datasets."
         )
 
-        json_query = query.dict(by_alias=True)
+        json_query = query.model_dump(by_alias=True)
         buffer: list[Record] = []
 
         async for items in PaginatedResponse.get_all(
@@ -443,8 +484,6 @@ class Format(RequestModel):
                 json = orjson.loads(data)
                 error = RepositoryError.model_validate(json)
                 raise RepositoryException(error, req_id)
-                # raise AssertionError(response)
-            # TODO: Use RepositoryError.verify_raise_conditionally(response)
 
             async for data in response.aiter_bytes(chunk_size=chunk_size):
                 read_bytes += len(data)
@@ -469,7 +508,7 @@ class Format(RequestModel):
         Note that you can pass arbitrary kwargs; these keyword-only arguments will
         be relayed to the pagination function. This allows you to control
         things like the pagination strategy (parallel, fast, default) or items
-        pulled per request. Currently you can use the following kwargs:
+        pulled per request. Currently, you can use the following kwargs:
 
         - per_page: int: Pull this many items per request
         - pagination_strategy: Use this `PaginationStrategy` to fetch items
