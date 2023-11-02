@@ -1,14 +1,13 @@
+import datetime
 from enum import Enum
 from pydantic import BaseModel, Field
 from typing import Optional, Any, Annotated
-
+from datetime import datetime
 from repoclient.models.base_model import ClientBaseModel
 
 from pydantic import (
     AfterValidator,
     PlainSerializer,
-    TypeAdapter,
-    WithJsonSchema,
 )
 
 from repoclient.models.upload_session import QueryParamBase
@@ -21,12 +20,14 @@ class Column(BaseModel):
 
     def _set(self, other: Any, operator: str):
         self.other = other
+        if isinstance(other, datetime):
+            self.other = other.isoformat()
         self.operator = operator
         return self
 
     @staticmethod
-    def _assert_arg_is_numeric(arg: Any):
-        assert isinstance(arg, (int, float)), f"{arg} is not numeric!"
+    def _assert_arg_supports_gt_lt_operators(arg: Any):
+        assert isinstance(arg, (int, float, datetime)), f"{arg} is not numeric!"
 
     @staticmethod
     def _assert_arg_is_str(arg: Any):
@@ -51,23 +52,23 @@ class Column(BaseModel):
     def is_in(self, other: list[int | float | str]):
         return self._set(other, "in")
 
-    def __eq__(self, other: str | int | float):
+    def __eq__(self, other: str | int | float | datetime):
         return self._set(other, "eq")
 
-    def __gt__(self, other: int | float):
-        self._assert_arg_is_numeric(other)
+    def __gt__(self, other: int | float | datetime):
+        self._assert_arg_supports_gt_lt_operators(other)
         return self._set(other, "gt")
 
-    def __ge__(self, other: int | float):
-        self._assert_arg_is_numeric(other)
+    def __ge__(self, other: int | float | datetime):
+        self._assert_arg_supports_gt_lt_operators(other)
         return self._set(other, "gte")
 
-    def __lt__(self, other: int | float):
-        self._assert_arg_is_numeric(other)
+    def __lt__(self, other: int | float | datetime):
+        self._assert_arg_supports_gt_lt_operators(other)
         return self._set(other, "lt")
 
-    def __le__(self, other: int | float):
-        self._assert_arg_is_numeric(other)
+    def __le__(self, other: int | float | datetime):
+        self._assert_arg_supports_gt_lt_operators(other)
         return self._set(other, "lte")
 
     def __str__(self):
@@ -80,7 +81,7 @@ class QueryGroupKind(str, Enum):
 
 
 class QueryGroup(BaseModel):
-    kind: QueryGroupKind = Field(QueryGroupKind.ALL, alias="conditionKind")
+    kind: QueryGroupKind = Field(..., serialization_alias="conditionKind")
     is_not: Optional[bool] = Field(False, alias="not")
     args: list[Column]
 
