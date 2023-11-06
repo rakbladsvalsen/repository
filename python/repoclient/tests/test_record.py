@@ -3,7 +3,7 @@ import operator
 import repoclient
 import pytest
 
-from repoclient import P, FormatUploadSession, FormatUploadSessionFilter
+from repoclient import P, FormatUploadSession, FormatUploadSessionFilter, QueryGroupKind
 
 from .util import (
     get_random_string,
@@ -82,7 +82,7 @@ async def test_entitlement_read_only(
     entitlement = await repoclient.FormatEntitlement(
         user_id=normal_user.id,
         format_id=sample_format.id,
-        access=repoclient.EntitlementAccessLevel.READ_ONLY,
+        access=[repoclient.EntitlementAccessLevel.READ],
     ).create(api_client, admin_user)
 
     with pytest.raises(repoclient.RepositoryException) as exc:
@@ -106,26 +106,7 @@ async def test_entitlement_read_write(
     entitlement = await repoclient.FormatEntitlement(
         user_id=normal_user.id,
         format_id=sample_format.id,
-        access=repoclient.EntitlementAccessLevel.READ_WRITE,
-    ).create(api_client, admin_user)
-    # user can write (rw perms)
-    upload_session = await sample_format.upload_data(api_client, normal_user, data)
-    assert upload_session.record_count == 100, "wrong record count"
-    # delete this entitlement
-    await entitlement.delete(api_client, admin_user)
-
-
-async def test_entitlement_write_only(
-    api_client,
-    admin_user: repoclient.User,
-    normal_user: repoclient.User,
-    sample_format: repoclient.Format,
-):
-    data = [{"NumericColumn": 123, "StringColumn": "abcdeasf"}] * 100
-    entitlement = await repoclient.FormatEntitlement(
-        user_id=normal_user.id,
-        format_id=sample_format.id,
-        access=repoclient.EntitlementAccessLevel.WRITE_ONLY,
+        access=[repoclient.EntitlementAccessLevel.WRITE],
     ).create(api_client, admin_user)
     # user can write (rw perms)
     upload_session = await sample_format.upload_data(api_client, normal_user, data)
@@ -141,7 +122,7 @@ async def test_entitlement_create_normal_user(
         await repoclient.FormatEntitlement(
             user_id=normal_user.id,
             format_id=sample_format.id,
-            access=repoclient.EntitlementAccessLevel.WRITE_ONLY,
+            access=[repoclient.EntitlementAccessLevel.WRITE],
         ).create(api_client, normal_user)
 
     # can't create stuff without admin perms
@@ -246,12 +227,13 @@ async def test_query(
     assert upload.outcome == "Success"
     assert upload.record_count == payload_size
     group = repoclient.QueryGroup(
+        kind=QueryGroupKind.ALL,
         args=[
             # query all numbers that are greater or equal than 50
             repoclient.Column(column="NumericColumn") >= payload_size // 2,
             # also query all strings that are in the string_data (basically the same condition as above)
             repoclient.Column(column="StringColumn").is_in(string_data),
-        ]
+        ],
     )
     query = repoclient.Query(query=[group], format_id=[sample_format.id])
 
@@ -353,12 +335,13 @@ async def test_query_negated(
     # test with the same condition as above but this time invert the whole thing
     # this should return all records that are less than 50
     group = repoclient.QueryGroup(
+        kind=QueryGroupKind.ALL,
         args=[
             # query all numbers that are greater or equal than 50
             repoclient.Column(column="NumericColumn") >= payload_size // 2,
             # also query all strings that are in the string_data (basically the same condition as above)
             repoclient.Column(column="StringColumn").is_in(string_data),
-        ]
+        ],
     ).negate()
     query = repoclient.Query(query=[group], format_id=[sample_format.id])
     # use all available pagination strategies
@@ -413,19 +396,21 @@ async def test_query_empty(
     # this should return all records that are less than 50
     half = payload_size // 2
     group = repoclient.QueryGroup(
+        kind=QueryGroupKind.ALL,
         args=[
             # query all numbers that are greater or equal than 50
             repoclient.Column(column="NumericColumn")
             >= half,
-        ]
+        ],
     ).negate()
     # this group is exactly the opposite of the above group: it'll
     # return all records whose StringColumn is between "51" and "100"
     second_group = repoclient.QueryGroup(
+        kind=QueryGroupKind.ALL,
         args=[
             repoclient.Column(column="StringColumn").is_in(string_data[half:]),
             repoclient.Column(column="NumericColumn") >= half,
-        ]
+        ],
     )
     query = repoclient.Query(query=[group, second_group], format_id=[sample_format.id])
     # use all available pagination strategies
@@ -465,11 +450,12 @@ async def test_query_like_case_insensitive(
     assert upload.outcome == "Success"
     assert upload.record_count == len(data)
     second_group = repoclient.QueryGroup(
+        kind=QueryGroupKind.ALL,
         args=[
             repoclient.Column(column="StringColumn").is_like_case_insensitive(
                 "star wars: the %"
             ),
-        ]
+        ],
     )
     query = repoclient.Query(query=[second_group], format_id=[sample_format.id])
     # use all available pagination strategies
@@ -511,11 +497,12 @@ async def test_query_regex_case_insensitive(
     assert upload.outcome == "Success"
     assert upload.record_count == len(data)
     second_group = repoclient.QueryGroup(
+        kind=QueryGroupKind.ALL,
         args=[
             repoclient.Column(column="StringColumn").matches_regex_case_insensitive(
                 "star wars: the.*"
             ),
-        ]
+        ],
     )
     query = repoclient.Query(query=[second_group], format_id=[sample_format.id])
     # use all available pagination strategies
@@ -550,11 +537,12 @@ async def test_query_regex_case_sensitive(
     assert upload.outcome == "Success"
     assert upload.record_count == len(data)
     second_group = repoclient.QueryGroup(
+        kind=QueryGroupKind.ALL,
         args=[
             # this will only match "Star Wars: THE FORCE AWAKENS" (this condition
             # is negated).
             repoclient.Column(column="StringColumn").matches_regex(".*LAST JEDI$"),
-        ]
+        ],
     ).negate()
     query = repoclient.Query(query=[second_group], format_id=[sample_format.id])
     # use all available pagination strategies

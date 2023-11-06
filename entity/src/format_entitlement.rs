@@ -1,34 +1,36 @@
+use std::collections::HashSet;
+use std::ops::Deref;
+
 use crate::traits::{AsQueryParamFilterable, AsQueryParamSortable};
 use central_repository_macros::AsQueryParam;
 use chrono::{DateTime, Utc};
-use sea_orm::entity::prelude::*;
-use sea_orm::Value;
+use sea_orm::sea_query::BinOper;
+use sea_orm::{entity::prelude::*, FromJsonQueryResult};
 use serde::{Deserialize, Serialize};
 
-#[derive(EnumIter, DeriveActiveEnum, Eq, PartialEq, Deserialize, Serialize, Debug, Clone)]
-#[sea_orm(rs_type = "String", db_type = "String(None)")]
+pub const ARRAY_CONTAINS_OP: BinOper = BinOper::Custom("?");
+
+#[derive(Eq, PartialEq, Deserialize, Serialize, Debug, Clone, FromJsonQueryResult, Hash)]
 #[serde(rename_all = "camelCase")]
-pub enum Access {
-    #[sea_orm(string_value = "RW")]
-    ReadWrite,
-    #[sea_orm(string_value = "R")]
-    ReadOnly,
-    #[sea_orm(string_value = "W")]
-    WriteOnly,
+pub enum AccessLevel {
+    Read,
+    Write,
 }
 
-impl From<&Access> for Value {
-    // We need to implement From<&Access> as we otherwise
-    // won't be able to use as_query(eq) for any field with
-    // type Access.
-    fn from(value: &Access) -> Self {
-        sea_orm::Value::from(value.to_value())
+impl AccessLevel {
+    #[inline(always)]
+    pub fn get_serialized(&self) -> serde_json::Value {
+        serde_json::to_value(self).expect("unexpected error: access level encode")
     }
 }
 
-impl Default for Access {
-    fn default() -> Self {
-        Self::ReadOnly
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, FromJsonQueryResult, Default)]
+pub struct Access(pub HashSet<AccessLevel>);
+
+impl Deref for Access {
+    type Target = HashSet<AccessLevel>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
@@ -72,7 +74,6 @@ pub struct Model {
         custom_convert = "sea_orm::Value::from(*value)"
     )]
     pub created_at: DateTime<Utc>,
-    #[as_query(column = "Column::Access", eq)]
     pub access: Access,
 }
 

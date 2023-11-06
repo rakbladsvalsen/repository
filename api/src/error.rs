@@ -79,62 +79,38 @@ pub enum APIError {
     InvalidQuery(String),
     #[error("Invalid pagination size: {0}")]
     InvalidPageSize(String),
-    #[error(transparent)]
-    CoreError(#[from] CoreError),
-    #[error(transparent)]
-    DbErr(#[from] DbErr),
-    #[error(transparent)]
+    #[error("Fatal threading error")]
     BlockingError(#[from] BlockingError),
-    #[error(transparent)]
-    DatabaseQueryError(#[from] DatabaseQueryError),
+    #[error("Rate limit: {0}")]
+    RateLimit(String),
 }
 
 impl APIError {
     pub fn status_code(&self) -> StatusCode {
         match self {
-            Self::DuplicateError => StatusCode::BAD_REQUEST,
-            Self::BadRequest => StatusCode::BAD_REQUEST,
-            Self::ValidationFailure(_) => StatusCode::BAD_REQUEST,
-            Self::ServerError => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::NotFound(_) => StatusCode::NOT_FOUND,
-            Self::InvalidCredentials => StatusCode::UNAUTHORIZED,
-            Self::InvalidToken => StatusCode::UNAUTHORIZED,
-            Self::MissingAuthHeader => StatusCode::UNAUTHORIZED,
-            Self::AdminOnlyResource => StatusCode::FORBIDDEN,
-            Self::InsufficientPermissions => StatusCode::FORBIDDEN,
-            Self::InvalidOperation(_) => StatusCode::BAD_REQUEST,
-            Self::ConflictingOperation(_) => StatusCode::CONFLICT,
-            Self::InvalidQuery(_) => StatusCode::BAD_REQUEST,
-            Self::CastError(_, _) => StatusCode::BAD_REQUEST,
-            Self::InvalidPageSize(_) => StatusCode::BAD_REQUEST,
-            Self::InactiveUser => StatusCode::UNAUTHORIZED,
-            Self::InactiveKey => StatusCode::UNAUTHORIZED,
-            Self::BlockingError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::CoreError(err) => match err {
-                CoreError::GrantError(_, _) => StatusCode::BAD_REQUEST,
-                CoreError::PoisonError => StatusCode::INTERNAL_SERVER_ERROR,
-                CoreError::DatabaseQueryError(e) => APIError::from(e).status_code(),
-            },
-            Self::DbErr(e) => APIError::from(e).status_code(),
-            Self::DatabaseQueryError(e) => APIError::from(e).status_code(),
-        }
-    }
-
-    pub fn get_kind(&self) -> String {
-        match self {
-            Self::DatabaseQueryError(DatabaseQueryError::DbErr(e)) => {
-                APIError::from(e).as_ref().into()
+            Self::DuplicateError | Self::BadRequest | Self::ValidationFailure(_) => {
+                StatusCode::BAD_REQUEST
             }
-            Self::DatabaseQueryError(e) => e.as_ref().into(),
-            Self::CoreError(CoreError::DatabaseQueryError(e)) => e.as_ref().into(),
-            Self::CoreError(e) => e.as_ref().into(),
-            other => other.as_ref().into(),
+            Self::ServerError => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::NotFound(_)
+            | Self::InvalidCredentials
+            | Self::InvalidToken
+            | Self::MissingAuthHeader => StatusCode::UNAUTHORIZED,
+            Self::AdminOnlyResource | Self::InsufficientPermissions => StatusCode::FORBIDDEN,
+            Self::InvalidOperation(_)
+            | Self::ConflictingOperation(_)
+            | Self::InvalidQuery(_)
+            | Self::CastError(_, _)
+            | Self::InvalidPageSize(_) => StatusCode::BAD_REQUEST,
+            Self::InactiveUser | Self::InactiveKey => StatusCode::UNAUTHORIZED,
+            Self::BlockingError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::RateLimit(_) => StatusCode::TOO_MANY_REQUESTS,
         }
     }
-}
 
-impl From<&DbErr> for APIError {
-    fn from(error: &DbErr) -> APIError {
+    /// Match special database-level errors (aka DbErr)
+    /// This function makes sure we're not leaking any information to end users.
+    fn from_db_err(error: &DbErr) -> APIError {
         match error {
             DbErr::Query(RuntimeErr::SqlxError(SQLXError::Database(err))) => {
                 // SQLX::Database errors don't have any enums inside, so there's
@@ -156,27 +132,56 @@ impl From<&DbErr> for APIError {
     }
 }
 
+impl From<DbErr> for APIError {
+    #[inline(always)]
+    fn from(error: DbErr) -> APIError {
+        APIError::from_db_err(&error)
+    }
+}
+
+impl From<DatabaseQueryError> for APIError {
+    #[inline(always)]
+    fn from(value: DatabaseQueryError) -> Self {
+        APIError::from(&value)
+    }
+}
+
 impl From<&DatabaseQueryError> for APIError {
+    #[inline(always)]
     fn from(value: &DatabaseQueryError) -> Self {
         match value {
             // this is just a regular seaorm DbErr.
-            DatabaseQueryError::DbErr(err) => APIError::from(err),
+            DatabaseQueryError::DbErr(err) => APIError::from_db_err(err),
             _ => APIError::InvalidQuery(value.to_string()),
         }
     }
 }
 
+impl From<CoreError> for APIError {
+    #[inline(always)]
+    fn from(value: CoreError) -> Self {
+        match value {
+            CoreError::GrantError(msg) => APIError::RateLimit(msg),
+            CoreError::PoisonError => APIError::ServerError,
+            // CoreError can also have DatabaseQueryError's inside. In this case,
+            // we just delegate the conversion.
+            CoreError::DatabaseQueryError(e) => APIError::from(e),
+        }
+    }
+}
+
 impl error::ResponseError for APIError {
+    #[inline(always)]
     fn status_code(&self) -> StatusCode {
         self.status_code()
     }
 
+    #[inline(always)]
     fn error_response(&self) -> HttpResponse {
-        info!("APIError: {:#?}", self);
         let out = OutboundAPIError {
             status_code: u16::from(self.status_code()),
             detail: Some(self.to_string()),
-            kind: self.get_kind(),
+            kind: self.as_ref().into(),
         };
         let mut response = HttpResponse::build(self.status_code());
         if self.status_code() == StatusCode::UNAUTHORIZED {
@@ -187,6 +192,7 @@ impl error::ResponseError for APIError {
 }
 
 impl From<APIError> for APIResponse {
+    #[inline(always)]
     fn from(value: APIError) -> Self {
         Err(value)
     }

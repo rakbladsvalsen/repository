@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 from typing import Optional, Iterator
-from datetime import datetime
+from datetime import datetime, timezone
+
+from orjson import orjson
 from pydantic import PrivateAttr, Field
 from httpx import AsyncClient
 
 from repoclient.exception import RepositoryError
 from repoclient.models.handler import RequestModel
+
+import base64
 
 
 class UserApiKey(RequestModel):
@@ -67,7 +71,6 @@ class UserApiKey(RequestModel):
         :param target_user:
         :return:
         """
-        assert self._token is not None, "object isn't initialized"
         assert caller.id is not None, "`caller` isn't initialized"
         assert target_user.id is not None, "`target_user` isn't initialized"
         if caller.id != target_user.id:
@@ -127,6 +130,49 @@ class User(RequestModel):
     @property
     def is_valid(self):
         return self._checked
+
+    def _decode_user_from_jwt(s: str) -> User:
+        # Decode base64
+        decoded = base64.urlsafe_b64decode(s + "=" * (4 - len(s) % 4))
+        print(decoded)
+
+    @staticmethod
+    def _base64_url_decode(base64_data: bytes) -> bytes:
+        padding = b"=" * (4 - (len(base64_data) % 4))
+        return base64.urlsafe_b64decode(base64_data + padding)
+
+    @staticmethod
+    def _from_jwt_unsafe(token: str) -> dict:
+        """Parses and decodes a JWT token.
+
+        :param authorization: The JWT token to parse and verify.
+        :return: Decoded data.
+        """
+        assert isinstance(token, str), "Not a string"
+        parts = token.encode().split(b".")
+        assert len(parts) == 3, "Malformed JWT (too few parts)"
+        header, data, signature = parts
+        decoded_data, _decoded_signature = User._base64_url_decode(
+            data
+        ), User._base64_url_decode(signature)
+        return orjson.loads(decoded_data)
+
+    @classmethod
+    def from_api_key(cls, key: str) -> User:
+        """Create a user instance from an API key.
+
+        :param key: API key
+        :return: User
+        """
+        user_data: dict[str, str] = User._from_jwt_unsafe(key)
+        # Rename JWT-specific keys to class property names
+        user_data["username"] = user_data.pop("user")
+        user_data["id"] = user_data.pop("sub")
+        # Parse json data
+        this = User.model_validate(user_data)
+        this._checked = True
+        this.token = key
+        return this
 
     async def login(self, client: AsyncClient) -> User:
         """Authenticate with the user's credentials.

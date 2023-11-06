@@ -75,8 +75,8 @@ pub async fn update_api_key(
         ));
     }
 
-    let key = match ApiKeyQuery::get_user_and_single_key(db, user_id, key_id).await? {
-        Some((_user, key)) => key,
+    let (user, key) = match ApiKeyQuery::get_user_and_single_key(db, user_id, key_id).await? {
+        Some((user, key)) => (user, key),
         _ => {
             return Err(APIError::NotFound(format!(
                 "key with id '{}' for user id '{}'",
@@ -85,7 +85,14 @@ pub async fn update_api_key(
         }
     };
 
-    let json = ApiKeyMutation::update(db, key, new.into_inner()).await?;
+    let rotate_requested = new.rotate.unwrap_or_default();
+    let api_key = ApiKeyMutation::update(db, key, new.into_inner()).await?;
+    if !rotate_requested {
+        // no need to forge token again since it wasn't rotated.
+        return HttpResponse::Ok().json(api_key).to_ok();
+    }
+    // If we're updating the token, then forge it using the last known rotation time.
+    let json = Token::create_api_key(user, api_key).await?;
     HttpResponse::Ok().json(json).to_ok()
 }
 

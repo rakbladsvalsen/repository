@@ -9,7 +9,9 @@ use ::entity::{
     error::DatabaseQueryError,
     format,
     format::Entity as Format,
-    format_entitlement::{self, Access, SearchModel as FormatEntitlementSearch},
+    format_entitlement::{
+        self, AccessLevel, SearchModel as FormatEntitlementSearch, ARRAY_CONTAINS_OP,
+    },
     record, upload_session, user,
     user::Entity as User,
 };
@@ -17,6 +19,7 @@ use async_stream::stream;
 use futures::{Stream, StreamExt};
 use log::{debug, info};
 use sea_orm::*;
+use sea_query::Expr;
 use tracing::Span;
 use uuid::Uuid;
 
@@ -285,19 +288,21 @@ impl UserQuery {
     }
 
     /// Verify whether the passed user has write access to `fmt` (a format).
+    #[inline(always)]
     pub async fn find_writable_format(
         db: &DbConn,
         user: &user::Model,
         format_id: i32,
     ) -> Result<Option<format::Model>, DbErr> {
+        let col = Expr::col(format_entitlement::Column::Access);
         user.find_related(format::Entity)
             .filter(format::Column::Id.eq(format_id))
             .filter(
                 // Filter only formats this user can write to
-                Condition::any().add(
-                    format_entitlement::Column::Access
-                        .is_in([Access::ReadWrite, Access::WriteOnly]),
-                ),
+                Condition::any().add(col.binary(
+                    ARRAY_CONTAINS_OP,
+                    AccessLevel::Write.get_serialized().as_str(),
+                )),
             )
             .one(db)
             .await

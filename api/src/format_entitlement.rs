@@ -25,6 +25,11 @@ async fn create_entitlement(
     auth: ReqData<Model>,
 ) -> APIResponse {
     verify_admin(&auth)?;
+
+    if inbound.access.is_empty() {
+        return Err(APIError::BadRequest);
+    }
+
     let db = DB_POOL.get().expect("database is not initialized");
     // make sure we're assigning a format to a non-superuser
     UserQuery::find_nonsuperuser_by_id(db, inbound.user_id)

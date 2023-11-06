@@ -298,6 +298,12 @@ class Format(RequestModel):
         buffer.seek(0)
         df = read_csv(buffer, dtype=object)
 
+        if df.empty is True:
+            raise AssertionError(
+                "No data received: ensure you have READ access "
+                "on this format and a valid query."
+            )
+
         for column in self.schema_ref:
             df[column.name] = df[column.name].astype(column.get_python_type())
 

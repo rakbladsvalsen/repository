@@ -5,7 +5,7 @@ use chrono::Utc;
 use entity::{
     error::DatabaseQueryError,
     format::{self, ColumnKind},
-    format_entitlement::{self, Access},
+    format_entitlement::{self, AccessLevel, ARRAY_CONTAINS_OP},
     record,
     traits::AsQueryParamFilterable,
     upload_session, user,
@@ -314,7 +314,10 @@ impl SearchQuery {
             false => user
                 .find_related(format::Entity)
                 .filter(Condition::all().add(
-                    format_entitlement::Column::Access.is_in([Access::ReadWrite, Access::ReadOnly]),
+                    Expr::col(format_entitlement::Column::Access).binary(
+                        ARRAY_CONTAINS_OP,
+                        AccessLevel::Read.get_serialized().as_str(),
+                    ),
                 )),
         };
 

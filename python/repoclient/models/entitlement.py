@@ -19,31 +19,14 @@ logger = logging.getLogger("repoclient")
 
 
 class EntitlementAccessLevel(str, Enum):
-    READ_ONLY = "readOnly"
-    READ_WRITE = "readWrite"
-    WRITE_ONLY = "writeOnly"
-
-
-class FormatEntitlementQuery(UserFormatFilter):
-    access_eq: Optional[EntitlementAccessLevel] = Field(None, alias="accessEq")
-
-    def filter_read_access(self):
-        self.access_eq = EntitlementAccessLevel.READ_ONLY
-        return self
-
-    def filter_write_access(self):
-        self.access_eq = EntitlementAccessLevel.WRITE_ONLY
-        return self
-
-    def filter_read_write_access(self):
-        self.access_eq = EntitlementAccessLevel.READ_WRITE
-        return self
+    READ = "read"
+    WRITE = "write"
 
 
 class FormatEntitlement(RequestModel):
     user_id: str = Field(alias="userId")
     format_id: int = Field(alias="formatId")
-    access: Optional[EntitlementAccessLevel] = None
+    access: list[EntitlementAccessLevel]
     created_at: Optional[datetime] = Field(None, alias="createdAt")
 
     def __str__(self):
@@ -106,7 +89,6 @@ class FormatEntitlement(RequestModel):
     async def get_all(
         client: AsyncClient,
         user: User,
-        query: Optional[FormatEntitlementQuery] = None,
         **kwargs,
     ) -> Iterator[FormatEntitlement]:
         """Get all available format entitlements.
@@ -118,8 +100,6 @@ class FormatEntitlement(RequestModel):
         """
         # upstream = FormatEntitlement._build_upstream_url_filtered(filters)
         upstream = "/entitlement"
-        if query is not None:
-            upstream = query.build_url("/entitlement?")
 
         async for item in PaginatedResponse.get_all(
             upstream=upstream,

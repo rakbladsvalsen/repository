@@ -52,7 +52,7 @@ impl LimitController {
                         "key {} currently holds {} grants, max is {}",
                         key, grants, self.max_grants_per_user
                     );
-                    return Err(CoreError::GrantError(key.to_string(), *grants));
+                    return Err(CoreError::GrantError(format!("{}, {}", key, grants)));
                 }
             }
         }
@@ -81,6 +81,8 @@ impl Drop for LimitGrant {
             }
         };
         let state = &mut inner.state;
+
+        // remove key from state if this key's grant count is 0
         if state.get(&self.key) == Some(&1) {
             state.remove(&self.key);
         } else if let Some(grants) = state.get_mut(&self.key) {

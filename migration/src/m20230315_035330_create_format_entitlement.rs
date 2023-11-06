@@ -44,7 +44,7 @@ impl MigrationTrait for Migration {
                     )
                     .col(
                         ColumnDef::new(FormatEntitlement::Access)
-                            .string()
+                            .json_binary()
                             .not_null(),
                     )
                     .col(

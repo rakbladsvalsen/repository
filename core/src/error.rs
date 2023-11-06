@@ -6,8 +6,8 @@ use thiserror::Error;
 
 #[derive(Error, Debug, AsRefStr)]
 pub enum CoreError {
-    #[error("User '{0}' already holds {1} grant(s)")]
-    GrantError(String, u64),
+    #[error("User '{0}' exceeded grant limit")]
+    GrantError(String),
     // Pass through PoisonedError
     #[error("Poisoned mutex error")]
     PoisonError,
