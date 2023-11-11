@@ -7,6 +7,6 @@ publish = false
 [dependencies]
 log = "0.4.20"
 envconfig = "0.10.0"
-better-debug = { git = "https://github.com/rakbladsvalsen/BetterDebug.git" }
+better-debug = "1.0.1"
 once_cell = "1.18.0"
 dotenvy = "0.15.7"
