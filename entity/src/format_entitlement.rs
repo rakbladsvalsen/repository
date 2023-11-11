@@ -15,6 +15,12 @@ pub const ARRAY_CONTAINS_OP: BinOper = BinOper::Custom("?");
 pub enum AccessLevel {
     Read,
     Write,
+    /// Users with this access level will be able to
+    /// delete records from the last N hours.
+    LimitedDelete,
+    /// Users with this access level will be able to
+    /// delete whatever records they want.
+    Delete,
 }
 
 impl AccessLevel {

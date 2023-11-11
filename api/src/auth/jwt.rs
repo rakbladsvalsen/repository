@@ -1,10 +1,8 @@
-use crate::{
-    common::handle_fatal,
-    conf::{CONFIG, DECODING_KEY, ENCODING_KEY},
-};
+use crate::{common::handle_fatal, conf::APIConfig};
 use actix_web::{web, HttpResponse};
 use argon2::Argon2;
-use central_repository_dao::{sea_orm::DbConn, user::Model as UserModel, ApiKeyQuery, UserQuery};
+use central_repository_config::inner::Config;
+use central_repository_dao::{user::Model as UserModel, ApiKeyQuery, UserQuery};
 use chrono::{Duration, Utc};
 use entity::api_key::Model as ApiKeyModel;
 use jsonwebtoken::{decode, encode, Algorithm, Header, Validation};
@@ -90,10 +88,9 @@ impl Token {
 
     /// Validate API key.
     #[inline(always)]
-    async fn validate_api_key(db: &DbConn, token: Claims) -> Result<UserModel, APIError> {
+    async fn validate_api_key(token: Claims) -> Result<UserModel, APIError> {
         let api_key_data = token.aks.as_ref().ok_or(APIError::ServerError)?;
-        let user_and_key =
-            ApiKeyQuery::get_user_and_single_key(db, token.sub, api_key_data.id).await?;
+        let user_and_key = ApiKeyQuery::get_user_and_single_key(token.sub, api_key_data.id).await?;
 
         let (user, key) = match user_and_key {
             Some((user, key)) => (user, key),
@@ -133,8 +130,8 @@ impl Token {
 
     /// Validate user token.
     #[inline(always)]
-    async fn validate_user_token(db: &DbConn, token: Claims) -> Result<UserModel, APIError> {
-        let user = UserQuery::find_by_id(db, token.sub).await?.ok_or_else(|| {
+    async fn validate_user_token(token: Claims) -> Result<UserModel, APIError> {
+        let user = UserQuery::find_by_id(token.sub).await?.ok_or_else(|| {
             warn!(
                 "Received a valid token but user was deleted (id {}).",
                 token.sub
@@ -153,14 +150,14 @@ impl Token {
 
     /// Validates a JWT token. Returns an instance of the user on success.
     #[inline(always)]
-    pub async fn validate(&self, db: &DbConn) -> Result<UserModel, APIError> {
+    pub async fn validate(&self) -> Result<UserModel, APIError> {
         // try to decode and validate token data.
         let token = Claims::try_from_jwt(&self.token)?;
         // token is valid, now validate the user (and the token)
         if token.aks.is_some() {
-            return Self::validate_api_key(db, token).await;
+            return Self::validate_api_key(token).await;
         }
-        Self::validate_user_token(db, token).await
+        Self::validate_user_token(token).await
     }
 }
 
@@ -210,7 +207,8 @@ impl Claims {
     /// Try to decode a Claim from a JWT.
     #[inline(always)]
     fn try_from_jwt(jwt: &str) -> Result<Claims, APIError> {
-        let token = decode::<Claims>(jwt, &DECODING_KEY, &VALIDATION).map_err(|err| {
+        let decoding_key = APIConfig::get_decoding_key();
+        let token = decode::<Claims>(jwt, decoding_key, &VALIDATION).map_err(|err| {
             info!("Token validation failure: {:?}", err);
             APIError::InvalidToken
         })?;
@@ -220,7 +218,8 @@ impl Claims {
     /// Convert this claim to an encoded JWT.
     #[inline(always)]
     fn try_to_jwt(&self) -> Result<String, APIError> {
-        encode(&JWT_HEADER, &self, &ENCODING_KEY).map_err(|err| {
+        let encoding_key = APIConfig::get_encoding_key();
+        encode(&JWT_HEADER, &self, encoding_key).map_err(|err| {
             // crypto/memory error
             handle_fatal!("token creation", err, APIError::ServerError)
         })
@@ -245,7 +244,7 @@ impl Claims {
     fn new_short_lived(user: &UserModel) -> Self {
         Self::new_from_user(
             user,
-            Duration::seconds(CONFIG.token_expiration_seconds.into()),
+            Duration::seconds(Config::get().token_expiration_seconds.into()),
         )
     }
 
@@ -254,7 +253,7 @@ impl Claims {
     fn new_long_lived(user: &UserModel) -> Self {
         Self::new_from_user(
             user,
-            Duration::hours(CONFIG.token_api_key_expiration_hours as i64),
+            Duration::hours(Config::get().token_api_key_expiration_hours as i64),
         )
     }
 }

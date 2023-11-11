@@ -3,7 +3,7 @@ use lazy_static::lazy_static;
 use log::{debug, info};
 use tracing::span::EnteredSpan;
 
-use crate::{auth::jwt::Token, common::create_middleware, conf::DB_POOL, error::APIError};
+use crate::{auth::jwt::Token, common::create_middleware, error::APIError};
 
 lazy_static! {
     static ref BEARER: &'static str = "Bearer ";
@@ -18,7 +18,6 @@ create_middleware!(
     AuthMiddlewareInner,
     fn call(&self, req: ServiceRequest) -> Self::Future {
         let svc = self.service.clone();
-        let db = DB_POOL.get().expect("database is not initialized");
 
         let token = req
             .headers()
@@ -49,7 +48,7 @@ create_middleware!(
             let token = Token::from(token);
 
             // handle token validation
-            let user = match token.validate(db).await {
+            let user = match token.validate().await {
                 Err(err) => return Ok(req.error_response(err).into()),
                 Ok(user) => user,
             };

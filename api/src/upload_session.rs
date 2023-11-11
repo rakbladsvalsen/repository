@@ -1,15 +1,16 @@
 use crate::{
-    conf::DB_POOL,
     core_middleware::auth::AuthMiddleware,
-    error::APIResponse,
-    pagination::{APIPager, PaginatedResponse},
+    error::{APIError, APIResponse, AsAPIResult},
+    pagination::{PaginatedResponse, Validate},
 };
 use actix_web::{
-    get,
-    web::{self, Query, ReqData},
+    delete, get,
+    web::{self, Path, Query, ReqData},
+    HttpResponse,
 };
 use central_repository_dao::{
-    upload_session::ModelAsQuery, user::Model as UserModel, UploadSessionQuery,
+    upload_session::ModelAsQuery, user::Model as UserModel, GetAllPaginated, PaginationOptions,
+    UploadSessionMutation, UploadSessionQuery,
 };
 use serde::{Deserialize, Serialize};
 
@@ -21,22 +22,30 @@ pub struct LoginCredentials {
 
 #[get("")]
 async fn get_all_upload_sessions(
-    pager: Query<APIPager>,
+    pager: Query<PaginationOptions>,
     filter: Query<ModelAsQuery>,
     auth: ReqData<UserModel>,
 ) -> APIResponse {
     pager.validate()?;
-    let db = DB_POOL.get().expect("database is not initialized");
     let auth = auth.into_inner();
     let filter = filter.into_inner();
-    let pager = pager.into_inner().into();
-    let ul_sessions = UploadSessionQuery::get_all_for_user(db, &filter, &pager, auth).await?;
-    Ok(PaginatedResponse::from(ul_sessions).into())
+    let pager = pager.into_inner();
+    let items = UploadSessionQuery::get_all_filtered_for_user(&filter, &pager, auth, None).await?;
+    Ok(PaginatedResponse::from(items).into())
+}
+
+#[delete("{id}")]
+async fn delete(auth: ReqData<UserModel>, id: Option<Path<i32>>) -> APIResponse {
+    let id = *id.ok_or(APIError::BadRequest)?;
+    let auth = auth.into_inner();
+    UploadSessionMutation::delete(auth, id).await?;
+    HttpResponse::NoContent().finish().to_ok()
 }
 
 pub fn init_upload_session_routes(cfg: &mut web::ServiceConfig) {
     let scope = web::scope("/upload_session")
         .wrap(AuthMiddleware)
-        .service(get_all_upload_sessions);
+        .service(get_all_upload_sessions)
+        .service(delete);
     cfg.service(scope);
 }

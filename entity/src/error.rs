@@ -6,6 +6,8 @@ use thiserror::Error;
 
 #[derive(Error, Debug, AsRefStr)]
 pub enum DatabaseQueryError {
+    #[error("Insufficient permissions")]
+    InsufficientPermissions,
     #[error("Column '{0}' doesn't exist in any of the requested/available formats")]
     InvalidColumnRequested(String),
     #[error("Invalid usage: {0}")]

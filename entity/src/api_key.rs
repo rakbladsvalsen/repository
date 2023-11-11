@@ -9,7 +9,7 @@ use uuid::Uuid;
 #[derive(
     Default, Clone, Debug, PartialEq, Eq, DeriveEntityModel, Deserialize, Serialize, AsQueryParam,
 )]
-#[as_query(sort_default_column = "Column::Id", camel_case)]
+#[as_query(sort_default_column = "Column::CreatedAt", camel_case)]
 #[sea_orm(table_name = "api_key")]
 #[serde(rename_all = "camelCase")]
 pub struct Model {

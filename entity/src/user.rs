@@ -1,5 +1,6 @@
 use crate::traits::AsQueryParamFilterable;
 use crate::traits::AsQueryParamSortable;
+use better_debug::BetterDebug;
 use central_repository_macros::AsQueryParam;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
@@ -9,7 +10,15 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(
-    Default, Clone, Debug, PartialEq, Eq, DeriveEntityModel, Deserialize, Serialize, AsQueryParam,
+    Default,
+    Clone,
+    BetterDebug,
+    PartialEq,
+    Eq,
+    DeriveEntityModel,
+    Deserialize,
+    Serialize,
+    AsQueryParam,
 )]
 #[as_query(sort_default_column = "Column::CreatedAt", camel_case)]
 #[sea_orm(table_name = "user")]
@@ -23,6 +32,7 @@ pub struct Model {
     #[as_query(column = "Column::Username", eq, like, ilike, contains)]
     pub username: String,
     #[serde(skip_serializing)]
+    #[better_debug(ignore = true)]
     pub password: String,
     #[serde(skip_deserializing, default = "chrono::offset::Utc::now")]
     #[as_query(column = "Column::CreatedAt")]

@@ -14,12 +14,14 @@ use log::{debug, error, info};
 use rayon::prelude::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use sea_orm::{
     sea_query::{extension::postgres::PgBinOper, Alias, BinOper, Expr, Query},
-    ColumnTrait, Condition, ConnectionTrait, EntityTrait, ModelTrait, QueryFilter, QuerySelect,
-    QueryTrait, RelationTrait, StreamTrait,
+    ColumnTrait, Condition, EntityTrait, ModelTrait, QueryFilter, QuerySelect, QueryTrait,
+    RelationTrait,
 };
 use sea_query::{IntoCondition, JoinType, SimpleExpr};
 use serde::*;
 use serde_json::Value;
+
+use crate::conf::DBConfig;
 
 const DEBUG_ARRAY_MAX_LOGGED: usize = 10;
 const PSQL_TZ_CAST: &str = "TIMESTAMP WITH TIME ZONE";
@@ -301,12 +303,12 @@ impl SearchQuery {
         }
     }
 
-    pub async fn get_readable_formats_for_user<C: ConnectionTrait + StreamTrait + 'static>(
+    pub async fn get_readable_formats_for_user(
         self,
         user: &user::Model,
-        db: &C,
     ) -> Result<PreparedSearchQuery, DatabaseQueryError> {
         // filter formats for this user.
+        let db = DBConfig::get_connection();
         let mut filtered_formats = match user.is_superuser {
             // do not restrict available formats for superusers
             true => format::Entity::find(),

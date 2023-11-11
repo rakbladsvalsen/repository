@@ -4,6 +4,7 @@ use actix_web::{
     web::{self, JsonConfig, PathConfig, QueryConfig},
     HttpResponse,
 };
+use central_repository_config::inner::Config;
 use central_repository_dao::CoreError;
 use entity::error::DatabaseQueryError;
 use log::{error, info};
@@ -14,7 +15,7 @@ use strum::AsRefStr;
 
 use thiserror::Error;
 
-use crate::{common::handle_fatal, conf::MAX_JSON_PAYLOAD_SIZE};
+use crate::common::handle_fatal;
 
 pub type APIResult<T> = Result<T, APIError>;
 
@@ -78,7 +79,7 @@ pub enum APIError {
     #[error("Query error: {0}")]
     InvalidQuery(String),
     #[error("Invalid pagination size: {0}")]
-    InvalidPageSize(String),
+    InvalidPaginationParameters(String),
     #[error("Fatal threading error")]
     BlockingError(#[from] BlockingError),
     #[error("Rate limit: {0}")]
@@ -92,17 +93,19 @@ impl APIError {
                 StatusCode::BAD_REQUEST
             }
             Self::ServerError => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::NotFound(_)
-            | Self::InvalidCredentials
-            | Self::InvalidToken
-            | Self::MissingAuthHeader => StatusCode::UNAUTHORIZED,
-            Self::AdminOnlyResource | Self::InsufficientPermissions => StatusCode::FORBIDDEN,
+            Self::NotFound(_) => StatusCode::NOT_FOUND,
+            Self::InvalidCredentials | Self::InvalidToken | Self::MissingAuthHeader => {
+                StatusCode::UNAUTHORIZED
+            }
+            Self::AdminOnlyResource
+            | Self::InsufficientPermissions
+            | Self::InactiveUser
+            | Self::InactiveKey => StatusCode::FORBIDDEN,
             Self::InvalidOperation(_)
             | Self::ConflictingOperation(_)
             | Self::InvalidQuery(_)
             | Self::CastError(_, _)
-            | Self::InvalidPageSize(_) => StatusCode::BAD_REQUEST,
-            Self::InactiveUser | Self::InactiveKey => StatusCode::UNAUTHORIZED,
+            | Self::InvalidPaginationParameters(_) => StatusCode::BAD_REQUEST,
             Self::BlockingError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::RateLimit(_) => StatusCode::TOO_MANY_REQUESTS,
         }
@@ -111,6 +114,7 @@ impl APIError {
     /// Match special database-level errors (aka DbErr)
     /// This function makes sure we're not leaking any information to end users.
     fn from_db_err(error: &DbErr) -> APIError {
+        info!("try cast: {}", error);
         match error {
             DbErr::Query(RuntimeErr::SqlxError(SQLXError::Database(err))) => {
                 // SQLX::Database errors don't have any enums inside, so there's
@@ -152,6 +156,7 @@ impl From<&DatabaseQueryError> for APIError {
         match value {
             // this is just a regular seaorm DbErr.
             DatabaseQueryError::DbErr(err) => APIError::from_db_err(err),
+            DatabaseQueryError::InsufficientPermissions => APIError::InsufficientPermissions,
             _ => APIError::InvalidQuery(value.to_string()),
         }
     }
@@ -201,7 +206,7 @@ impl From<APIError> for APIResponse {
 pub fn json_error_handler() -> JsonConfig {
     web::JsonConfig::default()
         // limit request payload size
-        .limit(*MAX_JSON_PAYLOAD_SIZE)
+        .limit(Config::get().max_json_payload_size as usize)
         .error_handler(|err, _| {
             info!("JSON deserialization error: {:?}", err);
             APIError::BadRequest.into()

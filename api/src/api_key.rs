@@ -1,8 +1,7 @@
 use crate::{
     auth::jwt::Token,
-    conf::{DB_POOL, MAX_API_KEYS_PER_USER},
     error::{APIError, APIResponse, AsAPIResult},
-    pagination::{APIPager, PaginatedResponse},
+    pagination::{PaginatedResponse, Validate},
     util::verify_admin,
 };
 use actix_web::{
@@ -10,7 +9,10 @@ use actix_web::{
     web::{Json, Path, Query, ReqData},
     HttpResponse,
 };
-use central_repository_dao::{user::Model as UserModel, ApiKeyMutation, ApiKeyQuery};
+use central_repository_config::inner::Config;
+use central_repository_dao::{
+    user::Model as UserModel, ApiKeyMutation, ApiKeyQuery, GetAllPaginated, PaginationOptions,
+};
 use entity::api_key::{ModelAsQuery, UpdatableModel as ApiKeyUpdatableModel};
 use itertools::Itertools;
 use log::info;
@@ -18,7 +20,6 @@ use uuid::Uuid;
 
 #[post("{user}/api-key")]
 pub async fn create_api_key(user: Path<Uuid>, auth: ReqData<UserModel>) -> APIResponse {
-    let db = DB_POOL.get().expect("database is not initialized");
     let user_id = user.into_inner();
     info!("api key: user: {:?}, target ID: {:?}", auth.id, user_id);
     if user_id != auth.id {
@@ -32,12 +33,12 @@ pub async fn create_api_key(user: Path<Uuid>, auth: ReqData<UserModel>) -> APIRe
         ));
     }
 
-    let user = match ApiKeyQuery::get_user_and_keys(db, user_id).await? {
+    let user = match ApiKeyQuery::get_user_and_keys(user_id).await? {
         Some((user, keys)) => {
-            if keys.len() >= *MAX_API_KEYS_PER_USER {
+            if keys.len() >= Config::get().max_api_keys_per_user as usize {
                 return Err(APIError::InvalidOperation(format!(
                     "Cannot have more than {} keys. Plase delete one of the following {} keys: {}",
-                    *MAX_API_KEYS_PER_USER,
+                    Config::get().max_api_keys_per_user,
                     keys.len(),
                     keys.iter().map(|it| it.id).join(",")
                 )));
@@ -47,7 +48,7 @@ pub async fn create_api_key(user: Path<Uuid>, auth: ReqData<UserModel>) -> APIRe
         _ => return Err(APIError::NotFound(format!("user ID '{}'", user_id))),
     };
 
-    let api_key = ApiKeyMutation::create_for_user(db, &user).await?;
+    let api_key = ApiKeyMutation::create_for_user(&user).await?;
     let json = Token::create_api_key(user, api_key).await?;
     HttpResponse::Created().json(json).to_ok()
 }
@@ -61,7 +62,6 @@ pub async fn update_api_key(
     auth: ReqData<UserModel>,
     new: Json<ApiKeyUpdatableModel>,
 ) -> APIResponse {
-    let db = DB_POOL.get().expect("database is not initialized");
     let (user_id, key_id) = user_and_key_id.into_inner();
     info!("api key: user: {:?}, target ID: {:?}", auth.id, user_id);
     if user_id != auth.id {
@@ -75,7 +75,7 @@ pub async fn update_api_key(
         ));
     }
 
-    let (user, key) = match ApiKeyQuery::get_user_and_single_key(db, user_id, key_id).await? {
+    let (user, key) = match ApiKeyQuery::get_user_and_single_key(user_id, key_id).await? {
         Some((user, key)) => (user, key),
         _ => {
             return Err(APIError::NotFound(format!(
@@ -86,7 +86,7 @@ pub async fn update_api_key(
     };
 
     let rotate_requested = new.rotate.unwrap_or_default();
-    let api_key = ApiKeyMutation::update(db, key, new.into_inner()).await?;
+    let api_key = ApiKeyMutation::update(key, new.into_inner()).await?;
     if !rotate_requested {
         // no need to forge token again since it wasn't rotated.
         return HttpResponse::Ok().json(api_key).to_ok();
@@ -104,7 +104,6 @@ pub async fn delete_api_key(
     user_and_key_id: Path<(Uuid, Uuid)>,
     auth: ReqData<UserModel>,
 ) -> APIResponse {
-    let db = DB_POOL.get().expect("database is not initialized");
     let (user_id, key_id) = user_and_key_id.into_inner();
     info!("api key: user: {:?}, target ID: {:?}", auth.id, user_id);
     if user_id != auth.id {
@@ -118,7 +117,7 @@ pub async fn delete_api_key(
         ));
     }
 
-    let key = match ApiKeyQuery::get_user_and_single_key(db, user_id, key_id).await? {
+    let key = match ApiKeyQuery::get_user_and_single_key(user_id, key_id).await? {
         Some((_user, key)) => key,
         _ => {
             return Err(APIError::NotFound(format!(
@@ -127,21 +126,21 @@ pub async fn delete_api_key(
             )))
         }
     };
-    ApiKeyMutation::delete(db, key).await?;
+    ApiKeyMutation::delete(key).await?;
     HttpResponse::NoContent().finish().to_ok()
 }
 
 #[get("api-key")]
 async fn get_all_api_keys(
-    pager: Query<APIPager>,
+    pager: Query<PaginationOptions>,
     filter: Query<ModelAsQuery>,
     auth: ReqData<UserModel>,
 ) -> APIResponse {
-    let db = DB_POOL.get().expect("database is not initialized");
     pager.validate()?;
     let filter = filter.into_inner();
-    let pager = pager.into_inner().into();
+    // todo!()
+    let pager = pager.into_inner();
     let user = auth.into_inner();
-    let entries = ApiKeyQuery::get_all_for_user(db, &filter, &pager, user).await?;
+    let entries = ApiKeyQuery::get_all_filtered_for_user(&filter, &pager, user, None).await?;
     Ok(PaginatedResponse::from(entries).into())
 }

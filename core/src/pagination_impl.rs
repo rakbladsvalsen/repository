@@ -1,38 +1,74 @@
-/// GAT-related features (generic associated types) for models.
-use crate::traits::*;
+use crate::{conf::DBConfig, traits::*};
+use ::entity::user;
 use async_trait::async_trait;
+use central_repository_config::inner::Config;
 use futures::{try_join, Stream};
 use log::{debug, info};
 use sea_orm::*;
 use sea_query::{Alias, Expr, SelectStatement};
+use serde::Deserialize;
 use std::{fmt::Debug, pin::Pin};
 
 type ResultModel<T> = Result<T, DbErr>;
 
+/// This trait provides sorted + filtered + paginated searches
+/// for any type implementing the 3 associated types.
 pub trait GetAllTrait<'db> {
     type ResultModel: FromQueryResult + Sized + Send + Sync + 'db;
     type FilterQueryModel: AsQueryParamFilterable + AsQueryParamSortable + Debug + Send + Sync;
     type Entity: EntityTrait<Model = Self::ResultModel>;
+
+    /// Filter objects for on a per-user basis. This trait allows the caller
+    /// to modify the database query in order to filter out potentially sensitive entries.
+    #[inline(always)]
+    fn filter_out_select(
+        _user: &user::Model,
+        select: Select<Self::Entity>,
+    ) -> sea_orm::Select<Self::Entity> {
+        select
+    }
 }
 
-#[derive(Debug, Clone)]
+fn default_page() -> u64 {
+    0
+}
+
+fn default_page_size() -> u64 {
+    Config::get().default_pagination_size
+}
+
+fn default_full_count() -> bool {
+    Config::get().return_query_count
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct PaginationOptions {
     /// The page to fetch.
-    pub fetch_page: u64,
+    #[serde(default = "default_page")]
+    pub page: u64,
     /// The number of items per page.
-    pub page_size: u64,
+    #[serde(default = "default_page_size")]
+    pub per_page: u64,
     /// Whether to fetch items and page count.
-    pub items_and_pages: bool,
+    #[serde(default = "default_full_count")]
+    pub count: bool,
+}
+
+impl PaginationOptions {
+    /// Whether the passed pagination options are valid or not.
+    #[inline(always)]
+    pub fn is_valid(&self) -> bool {
+        self.per_page > 0 && self.per_page <= Config::get().max_pagination_size
+    }
 }
 
 #[async_trait]
 pub trait GetAllPaginated<'db>: GetAllTrait<'db> {
     /// Get total number of items in this query.
     #[inline(always)]
-    async fn num_items<C: ConnectionTrait>(
-        db: &C,
-        select: &mut sea_orm::Select<Self::Entity>,
-    ) -> Result<u64, DbErr> {
+    async fn num_items(select: &mut sea_orm::Select<Self::Entity>) -> Result<u64, DbErr> {
+        let db = DBConfig::get_connection();
         let stmt = SelectStatement::new()
             .expr(Expr::cust("COUNT (*) AS num_items"))
             .from_subquery(
@@ -61,16 +97,17 @@ pub trait GetAllPaginated<'db>: GetAllTrait<'db> {
     /// Returns a tuple, containing:
     /// - (Total number of pages, total number of items)
     #[inline(always)]
-    async fn num_items_and_pages<C: ConnectionTrait>(
-        db: &C,
+    async fn num_items_and_pages(
         select: &mut sea_orm::Select<Self::Entity>,
         page_size: u64,
     ) -> Result<(u64, u64), DbErr> {
-        let num_items = Self::num_items(db, select).await?;
+        let num_items = Self::num_items(select).await?;
         let num_pages = (num_items as f64 / page_size as f64).ceil() as u64;
         Ok((num_pages, num_items))
     }
 
+    /// Apply default sorting column and, additionally, filter
+    /// using any fields the user passed.
     fn apply_filters(
         filters: &Self::FilterQueryModel,
         select_stmt: Option<sea_orm::Select<Self::Entity>>,
@@ -90,39 +127,38 @@ pub trait GetAllPaginated<'db>: GetAllTrait<'db> {
     /// `db`: The database connection.
     /// filtters: Filters to apply to the query.
     /// select_stmt: Optional statement to use for the query.
-    async fn get_all_as_stream<C: ConnectionTrait + StreamTrait + 'db>(
-        db: &'db C,
+    async fn get_all_as_stream(
         filters: &Self::FilterQueryModel,
         select_stmt: Option<sea_orm::Select<Self::Entity>>,
     ) -> Result<Pin<Box<dyn Stream<Item = ResultModel<Self::ResultModel>> + Send + 'db>>, DbErr>
     {
+        let db = DBConfig::get_connection();
         let select = Self::apply_filters(filters, select_stmt);
         Ok(select.stream(db).await.map(Box::pin)?)
     }
 
     /// Get all available items using pagination.
-    async fn get_all<C: ConnectionTrait, O: IntoSimpleExpr + Send>(
-        db: &C,
+    async fn get_all(
         filters: &Self::FilterQueryModel,
         pagination_options: &PaginationOptions,
         select_stmt: Option<sea_orm::Select<Self::Entity>>,
-        order_by: O,
     ) -> Result<(Vec<Self::ResultModel>, u64, u64), DbErr> {
+        let db = DBConfig::get_connection();
         debug!("pagination options: {:#?}", pagination_options);
         let mut select = Self::apply_filters(filters, select_stmt);
-        let select_ordered = select.clone().order_by_asc(order_by);
+        let select_ordered = select.clone();
 
         // Create paginators.
         // Note that the ordered paginator only returns items sorted by whatever column was passed in order_by,
         // for the actual count we don't need to ORDER BY the internal query.
-        let paginator_ordered = select_ordered.paginate(db, pagination_options.page_size);
-        let pagination_fut = paginator_ordered.fetch_page(pagination_options.fetch_page);
+        let paginator_ordered = select_ordered.paginate(db, pagination_options.per_page);
+        let pagination_fut = paginator_ordered.fetch_page(pagination_options.page);
 
-        if pagination_options.items_and_pages {
+        if pagination_options.count {
             info!("executing potentially slow query");
             // let paginator = select.paginate(db, pagination_options.page_size);
             let items_and_pages_fut =
-                Self::num_items_and_pages(db, &mut select, pagination_options.page_size);
+                Self::num_items_and_pages(&mut select, pagination_options.per_page);
             // if items and pages is enabled, run two queries concurrently:
             // - a normal SELECT query
             // - a COUNT(*) query
@@ -131,6 +167,18 @@ pub trait GetAllPaginated<'db>: GetAllTrait<'db> {
         }
         // if items and pages is disabled, run a single query
         Ok((pagination_fut.await?, 0, 0))
+    }
+
+    /// Get all entries filtered for this user.
+    async fn get_all_filtered_for_user(
+        filters: &Self::FilterQueryModel,
+        pagination_options: &PaginationOptions,
+        user: user::Model,
+        select_stmt: Option<sea_orm::Select<Self::Entity>>,
+    ) -> Result<(Vec<Self::ResultModel>, u64, u64), DbErr> {
+        let mut select_stmt = select_stmt.unwrap_or_else(Self::Entity::find);
+        select_stmt = Self::filter_out_select(&user, select_stmt);
+        Self::get_all(filters, pagination_options, Some(select_stmt)).await
     }
 }
 

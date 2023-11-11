@@ -1,18 +1,16 @@
 use crate::{
     common::{timed, DebugMode},
-    conf::{
-        BULK_INSERT_CHUNK_SIZE, DB_CSV_STREAM_WORKERS, DB_CSV_TRANSFORM_WORKERS,
-        DB_CSV_WORKER_QUEUE_DEPTH, DB_POOL, LIMIT_SERVICE,
-    },
+    conf::APIConfig,
     core_middleware::auth::AuthMiddleware,
     error::{APIError, APIResponse, AsAPIResult},
-    pagination::{APIPager, PaginatedResponse},
+    pagination::{PaginatedResponse, Validate},
     record_validation::InboundRecordData,
 };
+use central_repository_config::inner::Config;
 use central_repository_dao::{
     record::ModelAsQuery, upload_session::OutcomeKind, user::Model as UserModel, FormatQuery,
-    ParallelStreamConfig, RecordMutation, RecordQuery, SearchQuery, UploadSessionMutation,
-    UserQuery,
+    PaginationOptions, ParallelStreamConfig, RecordMutation, RecordQuery, SearchQuery,
+    UploadSessionMutation, UserQuery,
 };
 
 use actix_web::{
@@ -28,29 +26,27 @@ use rayon::{prelude::*, slice::ParallelSlice};
 
 #[post("/filter")]
 async fn get_all_filtered_records(
-    pager: Query<APIPager>,
+    pager: Query<PaginationOptions>,
     filter: Query<ModelAsQuery>,
     auth: ReqData<UserModel>,
     query: Json<SearchQuery>,
     debug: actix_web::web::Query<DebugMode>,
 ) -> APIResponse {
     query.validate()?;
-    let db = DB_POOL.get().expect("database is not initialized");
     // get this query's inner contents
     let query = query.into_inner();
     info!("query: {:#?}", query);
     let filter = filter.into_inner();
     pager.validate()?;
-    let pager = pager.into_inner().into();
+    let pager = pager.into_inner();
     if **debug {
         // if "?debug=true" is passed, return the full dict query
         info!("accessed debugging interface");
         return HttpResponse::Ok().json(query).to_ok();
     }
-    let prepared_search = query.get_readable_formats_for_user(&auth, db).await?;
+    let prepared_search = query.get_readable_formats_for_user(&auth).await?;
     // create extra filtering condition to search inside ALL JSONB hashmaps
-    let records =
-        RecordQuery::filter_readable_records(db, &filter, &pager, prepared_search).await?;
+    let records = RecordQuery::filter_readable_records(&filter, &pager, prepared_search).await?;
     Ok(PaginatedResponse::from(records).into())
 }
 
@@ -66,25 +62,19 @@ async fn get_all_filtered_records_stream(
     let query = query.into_inner();
     info!("query: {:#?}", query);
     let filter = filter.into_inner();
-    let db = DB_POOL.get().expect("database is not initialized");
     if **debug {
         info!("accessed debugging interface");
         return HttpResponse::Ok().json(query).to_ok();
     }
 
-    let config = ParallelStreamConfig::new(
-        *DB_CSV_STREAM_WORKERS,
-        *DB_CSV_WORKER_QUEUE_DEPTH,
-        *DB_CSV_TRANSFORM_WORKERS,
-    );
+    let config = ParallelStreamConfig::default();
 
     let mut limit_grant = None;
     if !auth.is_superuser {
-        limit_grant = Some(LIMIT_SERVICE.new_grant_for_key(&auth.username)?);
+        limit_grant = Some(APIConfig::get_limit_service().new_grant_for_key(&auth.username)?);
     }
 
     let stream = RecordQuery::filter_readable_records_stream(
-        db,
         auth.into_inner(),
         &filter,
         query,
@@ -102,17 +92,16 @@ async fn get_all_filtered_records_stream(
 
 #[post("")]
 async fn create_record(inbound: Json<InboundRecordData>, auth: ReqData<UserModel>) -> APIResponse {
-    let db = DB_POOL.get().expect("database is not initialized");
     let auth = auth.into_inner();
     let request_item_length = inbound.data.len() as i32;
     let inbound = inbound.into_inner();
     let format = match auth.is_superuser {
         // bypass format check for superusers
-        true => FormatQuery::find_by_id(db, inbound.format_id)
+        true => FormatQuery::find_by_id(&auth, inbound.format_id)
             .await?
             .ok_or_else(|| APIError::NotFound(format!("format with ID {}", inbound.format_id)))?,
         // for normal users, check if they can write to this format
-        false => UserQuery::find_writable_format(db, &auth, inbound.format_id)
+        false => UserQuery::find_writable_format(&auth, inbound.format_id)
             .await?
             .ok_or_else(|| {
                 info!(
@@ -157,7 +146,7 @@ async fn create_record(inbound: Json<InboundRecordData>, auth: ReqData<UserModel
         detail: outcome_detail.1,
         ..Default::default()
     };
-    let upload_session = UploadSessionMutation::create(db, upload_session).await?;
+    let upload_session = UploadSessionMutation::create(upload_session).await?;
 
     let saved_entries = match payload_validation {
         Ok(inbound) => {
@@ -168,13 +157,13 @@ async fn create_record(inbound: Json<InboundRecordData>, auth: ReqData<UserModel
                 .map(|entry| RecordModel::new(upload_session.id, format_id, entry))
                 .collect::<Vec<_>>();
             let insert_tasks = entries
-                .par_chunks(*BULK_INSERT_CHUNK_SIZE)
+                .par_chunks(Config::get().bulk_insert_chunk_size as usize)
                 .into_par_iter()
-                .map(|chunk| RecordMutation::create_many(db, chunk.to_owned()))
+                .map(|chunk| RecordMutation::create_many(chunk.to_owned()))
                 .collect::<Vec<_>>();
             info!(
                 "Preparing {request_entries} entries/{} chunks = {} insert jobs.",
-                *BULK_INSERT_CHUNK_SIZE,
+                Config::get().bulk_insert_chunk_size,
                 insert_tasks.len()
             );
             join_all(insert_tasks)
@@ -199,7 +188,6 @@ async fn create_record(inbound: Json<InboundRecordData>, auth: ReqData<UserModel
         Err(err) => {
             error!("Rolling back success status to error (caused by: {err:?})");
             UploadSessionMutation::update_as_failed(
-                db,
                 upload_session.id,
                 format!("{:?}, {:?}", err, err.to_string()),
             )

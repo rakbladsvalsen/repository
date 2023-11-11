@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use crate::{
-    pagination_impl::GetAllTrait, CoreError, GetAllPaginated, LimitGrant, PaginationOptions,
-    PreparedSearchQuery, SearchQuery,
+    conf::DBConfig, pagination_impl::GetAllTrait, CoreError, GetAllPaginated, LimitGrant,
+    PaginationOptions, PreparedSearchQuery, SearchQuery,
 };
 use ::entity::{
     api_key,
@@ -16,12 +16,16 @@ use ::entity::{
     user::Entity as User,
 };
 use async_stream::stream;
+use central_repository_config::inner::Config;
 use futures::{Stream, StreamExt};
 use log::{debug, info};
 use sea_orm::*;
 use sea_query::Expr;
 use tracing::Span;
 use uuid::Uuid;
+
+// Fixed headers for CSV exports
+const FIXED_HEADERS: &str = r#""ID","FormatId","UploadSessionId""#;
 
 // Query objects
 pub struct UploadSessionQuery;
@@ -31,43 +35,6 @@ pub struct UserQuery;
 pub struct RecordQuery;
 
 pub struct ApiKeyQuery;
-
-// Implement get_all for all of them
-impl GetAllTrait<'_> for UserQuery {
-    type Entity = user::Entity;
-    type FilterQueryModel = user::ModelAsQuery;
-    type ResultModel = user::Model;
-}
-
-impl GetAllTrait<'_> for FormatQuery {
-    type Entity = format::Entity;
-    type FilterQueryModel = format::ModelAsQuery;
-    type ResultModel = format::Model;
-}
-
-impl GetAllTrait<'_> for FormatEntitlementQuery {
-    type FilterQueryModel = format_entitlement::ModelAsQuery;
-    type ResultModel = format_entitlement::Model;
-    type Entity = format_entitlement::Entity;
-}
-
-impl GetAllTrait<'_> for UploadSessionQuery {
-    type FilterQueryModel = upload_session::ModelAsQuery;
-    type ResultModel = upload_session::Model;
-    type Entity = upload_session::Entity;
-}
-
-impl GetAllTrait<'_> for RecordQuery {
-    type FilterQueryModel = record::ModelAsQuery;
-    type ResultModel = record::Model;
-    type Entity = record::Entity;
-}
-
-impl GetAllTrait<'_> for ApiKeyQuery {
-    type FilterQueryModel = api_key::ModelAsQuery;
-    type ResultModel = api_key::Model;
-    type Entity = api_key::Entity;
-}
 
 pub struct ParallelStreamConfig {
     num_streams: usize,
@@ -85,41 +52,133 @@ impl ParallelStreamConfig {
     }
 }
 
-const FIXED_HEADERS: &str = r#""ID","FormatId","UploadSessionId""#;
+impl Default for ParallelStreamConfig {
+    fn default() -> Self {
+        let conf = Config::get();
+        Self::new(
+            conf.db_csv_stream_workers as usize,
+            conf.db_csv_worker_queue_depth as usize,
+            conf.db_csv_transform_workers as usize,
+        )
+    }
+}
+
+impl GetAllTrait<'_> for UserQuery {
+    type Entity = user::Entity;
+    type FilterQueryModel = user::ModelAsQuery;
+    type ResultModel = user::Model;
+}
+
+impl GetAllTrait<'_> for FormatQuery {
+    type Entity = format::Entity;
+    type FilterQueryModel = format::ModelAsQuery;
+    type ResultModel = format::Model;
+
+    fn filter_out_select(
+        user: &user::Model,
+        select: Select<Self::Entity>,
+    ) -> sea_orm::Select<Self::Entity> {
+        if !user.is_superuser {
+            info!("filtering available formats for user {:?}", user.id);
+            let filter = format_entitlement::Entity::find()
+                .select_only()
+                .column(format_entitlement::Column::FormatId)
+                .filter(format_entitlement::Column::UserId.eq(user.id));
+            let subquery = filter.as_query();
+
+            return select.filter(format::Column::Id.in_subquery(subquery.to_owned()));
+        }
+        select
+    }
+}
+
+impl GetAllTrait<'_> for FormatEntitlementQuery {
+    type FilterQueryModel = format_entitlement::ModelAsQuery;
+    type ResultModel = format_entitlement::Model;
+    type Entity = format_entitlement::Entity;
+
+    fn filter_out_select(
+        user: &user::Model,
+        select: Select<Self::Entity>,
+    ) -> sea_orm::Select<Self::Entity> {
+        if !user.is_superuser {
+            return select.filter(format_entitlement::Column::UserId.eq(user.id));
+        }
+        select
+    }
+}
+
+impl GetAllTrait<'_> for UploadSessionQuery {
+    type FilterQueryModel = upload_session::ModelAsQuery;
+    type ResultModel = upload_session::Model;
+    type Entity = upload_session::Entity;
+
+    fn filter_out_select(
+        user: &user::Model,
+        select: Select<Self::Entity>,
+    ) -> sea_orm::Select<Self::Entity> {
+        if !user.is_superuser {
+            let formats_for_user = format_entitlement::Entity::find()
+                .select_only()
+                .column(format_entitlement::Column::FormatId)
+                .filter(format_entitlement::Column::UserId.eq(user.id));
+            let format_for_user_subquery = formats_for_user.as_query();
+            return select.filter(
+                upload_session::Column::FormatId.in_subquery(format_for_user_subquery.to_owned()),
+            );
+        }
+        select
+    }
+}
+
+impl GetAllTrait<'_> for RecordQuery {
+    type FilterQueryModel = record::ModelAsQuery;
+    type ResultModel = record::Model;
+    type Entity = record::Entity;
+}
+
+impl GetAllTrait<'_> for ApiKeyQuery {
+    type FilterQueryModel = api_key::ModelAsQuery;
+    type ResultModel = api_key::Model;
+    type Entity = api_key::Entity;
+
+    fn filter_out_select(
+        user: &user::Model,
+        mut select: Select<Self::Entity>,
+    ) -> sea_orm::Select<Self::Entity> {
+        if !user.is_superuser {
+            info!("filtering available keys for user {:?}", user.id);
+            select = select.filter(api_key::Column::UserId.eq(user.id));
+        }
+        select
+    }
+}
 
 // Custom impl's for weird usecases.
 
 impl RecordQuery {
     // Get all available records.
-    pub async fn filter_readable_records<C: ConnectionTrait>(
-        db: &C,
+    pub async fn filter_readable_records(
         filters: &record::ModelAsQuery,
         pagination_options: &PaginationOptions,
         prepared_search: PreparedSearchQuery,
     ) -> Result<(Vec<record::Model>, u64, u64), DatabaseQueryError> {
-        let select = record::Entity::find();
-        let select = prepared_search.apply_condition(select)?;
-        RecordQuery::get_all(
-            db,
-            filters,
-            pagination_options,
-            Some(select),
-            record::Column::Id,
-        )
-        .await
-        .map_err(DatabaseQueryError::from)
+        let select = prepared_search.apply_condition(record::Entity::find())?;
+        RecordQuery::get_all(filters, pagination_options, Some(select))
+            .await
+            .map_err(DatabaseQueryError::from)
     }
 
-    pub async fn filter_readable_records_stream<C: ConnectionTrait + StreamTrait + 'static>(
-        db: &'static C,
+    pub async fn filter_readable_records_stream(
         auth: user::Model,
         filters: &record::ModelAsQuery,
         query: SearchQuery,
         parallel_stream_config: ParallelStreamConfig,
         limit_grant: Option<LimitGrant>,
     ) -> Result<impl Stream<Item = Vec<u8>>, CoreError> {
+        let db = DBConfig::get_connection();
         let prepared_search = query
-            .get_readable_formats_for_user(&auth, db)
+            .get_readable_formats_for_user(&auth)
             .await
             .map_err(DatabaseQueryError::from)?;
         let schema_columns = Arc::new(prepared_search.schema_columns());
@@ -145,7 +204,7 @@ impl RecordQuery {
                 "streaming: using {} streams, now waiting for COUNT",
                 parallel_stream_config.num_streams
             );
-            let num_items = RecordQuery::num_items(db, &mut (select.clone()))
+            let num_items = RecordQuery::num_items(&mut (select.clone()))
                 .await
                 .map_err(DatabaseQueryError::from)?;
 
@@ -235,41 +294,22 @@ impl RecordQuery {
 }
 
 impl FormatQuery {
-    pub async fn find_by_id(db: &DbConn, id: i32) -> Result<Option<format::Model>, DbErr> {
-        Format::find_by_id(id).one(db).await
-    }
-
-    pub async fn get_all_for_user<C: ConnectionTrait>(
-        db: &C,
-        filters: &format::ModelAsQuery,
-        pager: &PaginationOptions,
-        user: user::Model,
-    ) -> Result<(Vec<format::Model>, u64, u64), DbErr> {
-        let mut select_stmt = None;
-        if !user.is_superuser {
-            info!("filtering available formats for user {:?}", user.id);
-            let filter = format_entitlement::Entity::find()
-                .select_only()
-                .column(format_entitlement::Column::FormatId)
-                .filter(format_entitlement::Column::UserId.eq(user.id));
-            let subquery = filter.as_query();
-            select_stmt = Some(
-                format::Entity::find().filter(format::Column::Id.in_subquery(subquery.to_owned())),
-            );
-        }
-        FormatQuery::get_all(db, filters, pager, select_stmt, format::Column::CreatedAt).await
+    pub async fn find_by_id(user: &user::Model, id: i32) -> Result<Option<format::Model>, DbErr> {
+        let db = DBConfig::get_connection();
+        Self::filter_out_select(user, Format::find_by_id(id))
+            .one(db)
+            .await
     }
 }
 
 impl UserQuery {
-    pub async fn find_by_id(db: &DbConn, id: uuid::Uuid) -> Result<Option<user::Model>, DbErr> {
+    pub async fn find_by_id(id: uuid::Uuid) -> Result<Option<user::Model>, DbErr> {
+        let db = DBConfig::get_connection();
         User::find().filter(user::Column::Id.eq(id)).one(db).await
     }
 
-    pub async fn find_nonsuperuser_by_id(
-        db: &DbConn,
-        id: uuid::Uuid,
-    ) -> Result<Option<user::Model>, DbErr> {
+    pub async fn find_nonsuperuser_by_id(id: uuid::Uuid) -> Result<Option<user::Model>, DbErr> {
+        let db = DBConfig::get_connection();
         User::find()
             .filter(user::Column::Id.eq(id))
             .filter(user::Column::IsSuperuser.eq(false))
@@ -277,10 +317,8 @@ impl UserQuery {
             .await
     }
 
-    pub async fn find_by_username(
-        db: &DbConn,
-        username: &String,
-    ) -> Result<Option<user::Model>, DbErr> {
+    pub async fn find_by_username(username: &String) -> Result<Option<user::Model>, DbErr> {
+        let db = DBConfig::get_connection();
         User::find()
             .filter(user::Column::Username.eq(username))
             .one(db)
@@ -290,19 +328,19 @@ impl UserQuery {
     /// Verify whether the passed user has write access to `fmt` (a format).
     #[inline(always)]
     pub async fn find_writable_format(
-        db: &DbConn,
         user: &user::Model,
         format_id: i32,
     ) -> Result<Option<format::Model>, DbErr> {
+        let db = DBConfig::get_connection();
         let col = Expr::col(format_entitlement::Column::Access);
         user.find_related(format::Entity)
             .filter(format::Column::Id.eq(format_id))
             .filter(
                 // Filter only formats this user can write to
-                Condition::any().add(col.binary(
+                col.binary(
                     ARRAY_CONTAINS_OP,
                     AccessLevel::Write.get_serialized().as_str(),
-                )),
+                ),
             )
             .one(db)
             .await
@@ -311,78 +349,22 @@ impl UserQuery {
 
 impl FormatEntitlementQuery {
     pub async fn find_by_id(
-        db: &DbConn,
         id: &FormatEntitlementSearch,
     ) -> Result<Option<format_entitlement::Model>, DbErr> {
+        let db = DBConfig::get_connection();
         format_entitlement::Entity::find_by_id((id.user_id, id.format_id))
             .one(db)
             .await
     }
-
-    pub async fn get_all_for_user<C: ConnectionTrait>(
-        db: &C,
-        filters: &format_entitlement::ModelAsQuery,
-        pagination_options: &PaginationOptions,
-        user: user::Model,
-    ) -> Result<(Vec<format_entitlement::Model>, u64, u64), DbErr> {
-        let mut select_stmt = format_entitlement::Entity::find();
-        if !user.is_superuser {
-            select_stmt = select_stmt.filter(format_entitlement::Column::UserId.eq(user.id));
-        }
-        FormatEntitlementQuery::get_all(
-            db,
-            filters,
-            pagination_options,
-            Some(select_stmt),
-            format_entitlement::Column::CreatedAt,
-        )
-        .await
-    }
-}
-
-impl UploadSessionQuery {
-    pub async fn get_all_for_user<C: ConnectionTrait>(
-        db: &C,
-        filters: &upload_session::ModelAsQuery,
-        pagination_options: &PaginationOptions,
-        user: user::Model,
-    ) -> Result<(Vec<upload_session::Model>, u64, u64), DbErr> {
-        let mut select_stmt = upload_session::Entity::find();
-        if !user.is_superuser {
-            select_stmt = select_stmt.filter(upload_session::Column::UserId.eq(user.id));
-        }
-        UploadSessionQuery::get_all(
-            db,
-            filters,
-            pagination_options,
-            Some(select_stmt),
-            upload_session::Column::CreatedAt,
-        )
-        .await
-    }
 }
 
 impl ApiKeyQuery {
-    pub async fn get_all_for_user<C: ConnectionTrait>(
-        db: &C,
-        filters: &api_key::ModelAsQuery,
-        pager: &PaginationOptions,
-        user: user::Model,
-    ) -> Result<(Vec<api_key::Model>, u64, u64), DbErr> {
-        let mut select_stmt = None;
-        if !user.is_superuser {
-            info!("filtering available keys for user {:?}", user.id);
-            select_stmt = Some(api_key::Entity::find().filter(api_key::Column::UserId.eq(user.id)));
-        }
-        ApiKeyQuery::get_all(db, filters, pager, select_stmt, api_key::Column::CreatedAt).await
-    }
-
     /// Get the user associated with the given `user_id` and all its related
     /// keys.
-    pub async fn get_user_and_keys<C: ConnectionTrait>(
-        db: &C,
+    pub async fn get_user_and_keys(
         user_id: Uuid,
     ) -> Result<Option<(user::Model, Vec<api_key::Model>)>, DbErr> {
+        let db = DBConfig::get_connection();
         let mut first = user::Entity::find_by_id(user_id)
             .find_with_related(api_key::Entity)
             .all(db)
@@ -394,11 +376,11 @@ impl ApiKeyQuery {
     }
 
     /// Get the user associated with the given `user_id` and the related key.
-    pub async fn get_user_and_single_key<C: ConnectionTrait>(
-        db: &C,
+    pub async fn get_user_and_single_key(
         user_id: Uuid,
         key_id: Uuid,
     ) -> Result<Option<(user::Model, api_key::Model)>, DbErr> {
+        let db = DBConfig::get_connection();
         let mut first = user::Entity::find_by_id(user_id)
             .find_with_related(api_key::Entity)
             .filter(api_key::Column::Id.eq(key_id))
