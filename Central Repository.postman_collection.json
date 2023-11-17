@@ -1,6 +1,6 @@
 {
 	"info": {
-		"_postman_id": "2d9b3fd4-bd10-4eb3-9073-1a563bfbfc7a",
+		"_postman_id": "3a8a417b-5c6b-4be6-8613-1605db2558a6",
 		"name": "Central Repository",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
@@ -82,6 +82,71 @@
 			"response": []
 		},
 		{
+			"name": "[User] Login superuser",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"if(responseCode.code===200){",
+							"    try{",
+							"        var result = JSON.parse(responseBody);",
+							"        postman.setGlobalVariable(\"TOKEN\", result.token)",
+							"    }catch(e){",
+							"        console.error(e);",
+							"    }",
+							"}"
+						],
+						"type": "text/javascript"
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							"function makeId(length = 10){",
+							"    var result = \"\";",
+							"    var chars = \"ABCDEFGabcdefg1234567890\";",
+							"    var selectionableLength = chars.length;",
+							"    for(var i = 0; i < length; i++)",
+							"        result += chars.charAt(Math.floor(Math.random() * selectionableLength))",
+							"    return result;",
+							"}",
+							"",
+							"postman.setGlobalVariable(\"RANDOM\", makeId())",
+							"postman.setGlobalVariable(\"RANDOM_COLUMN\", \"Column_\" + makeId())",
+							"postman.setGlobalVariable(\"RANDOM_COLUMN_B\", \"Column_\" + makeId())",
+							"postman.setGlobalVariable(\"RANDOM_COLUMN_C\", \"Column_\" + makeId())"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"username\": \"admin\",\n    \"password\": \"admin\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{HOST}}/login",
+					"host": [
+						"{{HOST}}"
+					],
+					"path": [
+						"login"
+					]
+				}
+			},
+			"response": []
+		},
+		{
 			"name": "[User] Create user",
 			"event": [
 				{
@@ -152,71 +217,6 @@
 					],
 					"path": [
 						"user"
-					]
-				}
-			},
-			"response": []
-		},
-		{
-			"name": "[User] Login superuser",
-			"event": [
-				{
-					"listen": "test",
-					"script": {
-						"exec": [
-							"if(responseCode.code===200){",
-							"    try{",
-							"        var result = JSON.parse(responseBody);",
-							"        postman.setGlobalVariable(\"TOKEN\", result.token)",
-							"    }catch(e){",
-							"        console.error(e);",
-							"    }",
-							"}"
-						],
-						"type": "text/javascript"
-					}
-				},
-				{
-					"listen": "prerequest",
-					"script": {
-						"exec": [
-							"function makeId(length = 10){",
-							"    var result = \"\";",
-							"    var chars = \"ABCDEFGabcdefg1234567890\";",
-							"    var selectionableLength = chars.length;",
-							"    for(var i = 0; i < length; i++)",
-							"        result += chars.charAt(Math.floor(Math.random() * selectionableLength))",
-							"    return result;",
-							"}",
-							"",
-							"postman.setGlobalVariable(\"RANDOM\", makeId())",
-							"postman.setGlobalVariable(\"RANDOM_COLUMN\", \"Column_\" + makeId())",
-							"postman.setGlobalVariable(\"RANDOM_COLUMN_B\", \"Column_\" + makeId())",
-							"postman.setGlobalVariable(\"RANDOM_COLUMN_C\", \"Column_\" + makeId())"
-						],
-						"type": "text/javascript"
-					}
-				}
-			],
-			"request": {
-				"method": "POST",
-				"header": [],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n    \"username\": \"admin\",\n    \"password\": \"admin\"\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"url": {
-					"raw": "{{HOST}}/login",
-					"host": [
-						"{{HOST}}"
-					],
-					"path": [
-						"login"
 					]
 				}
 			},
@@ -868,19 +868,13 @@
 				"method": "GET",
 				"header": [],
 				"url": {
-					"raw": "{{HOST}}/user/api-key?activeEq=false",
+					"raw": "{{HOST}}/user/api-key",
 					"host": [
 						"{{HOST}}"
 					],
 					"path": [
 						"user",
 						"api-key"
-					],
-					"query": [
-						{
-							"key": "activeEq",
-							"value": "false"
-						}
 					]
 				}
 			},
@@ -953,18 +947,60 @@
 					}
 				},
 				"url": {
-					"raw": "{{HOST}}/upload_session?orderBy=createdAt",
+					"raw": "{{HOST}}/upload_session",
 					"host": [
 						"{{HOST}}"
 					],
 					"path": [
 						"upload_session"
-					],
-					"query": [
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "[User] Delete upload session",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript"
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
 						{
-							"key": "orderBy",
-							"value": "createdAt"
+							"key": "token",
+							"value": "{{TOKEN}}",
+							"type": "string"
 						}
+					]
+				},
+				"method": "DELETE",
+				"header": [],
+				"url": {
+					"raw": "{{HOST}}/upload_session/399",
+					"host": [
+						"{{HOST}}"
+					],
+					"path": [
+						"upload_session",
+						"399"
 					]
 				}
 			},
@@ -1198,9 +1234,6 @@
 		},
 		{
 			"name": "[Format] Filtered data",
-			"protocolProfileBehavior": {
-				"disableBodyPruning": true
-			},
 			"request": {
 				"auth": {
 					"type": "bearer",
@@ -1212,7 +1245,7 @@
 						}
 					]
 				},
-				"method": "GET",
+				"method": "POST",
 				"header": [
 					{
 						"key": "",
@@ -1244,53 +1277,6 @@
 							"key": "perPage",
 							"value": "10000"
 						}
-					]
-				}
-			},
-			"response": []
-		},
-		{
-			"name": "[Format] Filtered data Copy",
-			"protocolProfileBehavior": {
-				"disableBodyPruning": true
-			},
-			"request": {
-				"auth": {
-					"type": "bearer",
-					"bearer": [
-						{
-							"key": "token",
-							"value": "{{TOKEN}}",
-							"type": "string"
-						}
-					]
-				},
-				"method": "GET",
-				"header": [
-					{
-						"key": "",
-						"value": "",
-						"type": "default",
-						"disabled": true
-					}
-				],
-				"body": {
-					"mode": "raw",
-					"raw": "",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"url": {
-					"raw": "{{HOST}}/record/test",
-					"host": [
-						"{{HOST}}"
-					],
-					"path": [
-						"record",
-						"test"
 					]
 				}
 			},
@@ -1350,7 +1336,7 @@
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"userId\": \"{{CREATED_USER_ID}}\",\n    \"formatId\": {{NEW_FORMAT_ID}},\n    \"access\": \"readWrite\"\n}",
+					"raw": "{\n    \"userId\": \"{{CREATED_USER_ID}}\",\n    \"formatId\": {{NEW_FORMAT_ID}},\n    \"access\": [\"read\", \"delete\"]\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -1413,7 +1399,7 @@
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"userId\": {{CREATED_USER_ID}},\n    \"formatId\": {{NEW_FORMAT_ID}}\n}",
+					"raw": "{\n    \"userId\": \"{{CREATED_USER_ID}}\",\n    \"formatId\": {{NEW_FORMAT_ID}}\n}",
 					"options": {
 						"raw": {
 							"language": "json"

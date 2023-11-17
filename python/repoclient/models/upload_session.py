@@ -9,7 +9,7 @@ from typing import Optional, Iterator, TypeVar, Tuple, Type
 from datetime import datetime
 import logging
 
-
+from repoclient.exception import RepositoryError
 from repoclient.models.user import User
 from repoclient.pagination import PaginatedResponse
 
@@ -247,3 +247,14 @@ class UploadSession(BaseModel):
         ):
             for it in item:
                 yield it
+
+    async def delete(self, client: AsyncClient, user: User):
+        """Delete this upload session.
+
+        :param client: HTTP Client
+        :param user: Authenticated user
+        :return:
+        """
+        upstream = f"/upload_session/{self.id}"
+        response = await client.delete(upstream, headers=user.bearer)
+        RepositoryError.verify_raise_conditionally(response)

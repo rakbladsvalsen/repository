@@ -21,6 +21,8 @@ logger = logging.getLogger("repoclient")
 class EntitlementAccessLevel(str, Enum):
     READ = "read"
     WRITE = "write"
+    LIMITED_DELETE = "limitedDelete"
+    DELETE = "delete"
 
 
 class FormatEntitlement(RequestModel):

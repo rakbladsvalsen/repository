@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import Optional, Iterator
-from datetime import datetime, timezone
+from datetime import datetime
 
 from orjson import orjson
 from pydantic import PrivateAttr, Field
@@ -143,9 +143,8 @@ class User(RequestModel):
 
     @staticmethod
     def _from_jwt_unsafe(token: str) -> dict:
-        """Parses and decodes a JWT token.
+        """Parse77s and decodes a JWT token.
 
-        :param authorization: The JWT token to parse and verify.
         :return: Decoded data.
         """
         assert isinstance(token, str), "Not a string"

@@ -115,6 +115,73 @@ async def test_entitlement_read_write(
     await entitlement.delete(api_client, admin_user)
 
 
+async def test_delete_upload_session_admin_no_perm(
+    api_client,
+    admin_user: repoclient.User,
+    sample_format: repoclient.Format,
+):
+    data = [{"NumericColumn": 123, "StringColumn": "abcdeasf"}] * 100
+    # user can write (rw perms)
+    upload_session = await sample_format.upload_data(api_client, admin_user, data)
+    assert upload_session.record_count == 100, "wrong record count"
+    await upload_session.delete(api_client, admin_user)
+
+
+async def test_delete_upload_session_no_permission(
+    api_client,
+    admin_user: repoclient.User,
+    normal_user: repoclient.User,
+    sample_format: repoclient.Format,
+):
+    data = [{"NumericColumn": 123, "StringColumn": "abcdeasf"}] * 100
+    entitlement = await repoclient.FormatEntitlement(
+        user_id=normal_user.id,
+        format_id=sample_format.id,
+        access=[repoclient.EntitlementAccessLevel.WRITE],
+    ).create(api_client, admin_user)
+    # user can write (rw perms)
+    upload_session = await sample_format.upload_data(api_client, normal_user, data)
+    assert upload_session.record_count == 100, "wrong record count"
+    # Assert raise exception
+    with pytest.raises(repoclient.RepositoryException) as exc:
+        await upload_session.delete(api_client, normal_user)
+    exc: repoclient.RepositoryException = exc.value
+    assert exc.request_id is not None
+    assert exc.error.kind == "InsufficientPermissions"
+    # delete this entitlement
+    await entitlement.delete(api_client, admin_user)
+
+
+@pytest.mark.parametrize(
+    "delete_perm",
+    [
+        repoclient.EntitlementAccessLevel.LIMITED_DELETE,
+        repoclient.EntitlementAccessLevel.DELETE,
+    ],
+)
+async def test_delete_upload_session_permission(
+    api_client,
+    admin_user: repoclient.User,
+    normal_user: repoclient.User,
+    sample_format: repoclient.Format,
+    delete_perm: repoclient.EntitlementAccessLevel,
+):
+    data = [{"NumericColumn": 123, "StringColumn": "abcdeasf"}] * 100
+    entitlement = await repoclient.FormatEntitlement(
+        user_id=normal_user.id,
+        format_id=sample_format.id,
+        # We need write perfm to be able to write into this format
+        access=[repoclient.EntitlementAccessLevel.WRITE, delete_perm],
+    ).create(api_client, admin_user)
+    # user can write (rw perms)
+    upload_session = await sample_format.upload_data(api_client, normal_user, data)
+    assert upload_session.record_count == 100, "wrong record count"
+    # Assert raise exception
+    await upload_session.delete(api_client, normal_user)
+    # delete this entitlement
+    await entitlement.delete(api_client, admin_user)
+
+
 async def test_entitlement_create_normal_user(
     api_client, normal_user: repoclient.User, sample_format: repoclient.Format
 ):
