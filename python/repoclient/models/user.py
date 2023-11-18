@@ -31,6 +31,44 @@ class UserApiKey(RequestModel):
         assert self.has_token, "object doesn't have a token inside"
         return self._token
 
+    @staticmethod
+    async def rotate(
+        client: AsyncClient, user: User, user_id: str, key_id: str
+    ) -> UserApiKey:
+        """
+        Rotate an API key.
+        :param client:
+        :param user:
+        :param user_id:
+        :param key_id:
+        :return:
+        """
+        json = {"rotate": True}
+        response = await client.patch(
+            f"/user/{user_id}/api-key/{key_id}", headers=user.bearer, json=json
+        )
+        RepositoryError.verify_raise_conditionally(response)
+        json = response.json()
+        api_key = json["apiKey"]
+        ret: UserApiKey = UserApiKey.model_validate(api_key)
+        ret._token = json["token"]
+        return ret
+
+    @staticmethod
+    async def delete_by_id(client: AsyncClient, user: User, user_id: str, key_id: str):
+        """
+        Delete an API key by id.
+        :param client:
+        :param user:
+        :param user_id:
+        :param key_id:
+        :return:
+        """
+        response = await client.delete(
+            f"/user/{user_id}/api-key/{key_id}", headers=user.bearer
+        )
+        RepositoryError.verify_raise_conditionally(response)
+
     async def delete_key(self, client: AsyncClient, user: User = None):
         """
         Delete an API key for user `user` using `user`'s token.

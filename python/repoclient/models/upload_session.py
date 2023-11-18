@@ -248,6 +248,19 @@ class UploadSession(BaseModel):
             for it in item:
                 yield it
 
+    @staticmethod
+    async def delete_by_id(client: AsyncClient, user: User, upload_id: int):
+        """Delete this upload session.
+
+        :param client: HTTP Client
+        :param user: Authenticated user
+        :param upload_id: Upload session ID to delete.
+        :return:
+        """
+        upstream = f"/upload_session/{upload_id}"
+        response = await client.delete(upstream, headers=user.bearer)
+        RepositoryError.verify_raise_conditionally(response)
+
     async def delete(self, client: AsyncClient, user: User):
         """Delete this upload session.
 
@@ -255,6 +268,4 @@ class UploadSession(BaseModel):
         :param user: Authenticated user
         :return:
         """
-        upstream = f"/upload_session/{self.id}"
-        response = await client.delete(upstream, headers=user.bearer)
-        RepositoryError.verify_raise_conditionally(response)
+        await UploadSession.delete_by_id(client, user, self.id)

@@ -147,9 +147,6 @@ class Format(RequestModel):
     schema_ref: list[ColumnSchema] = Field(alias="schema")
     _checked: bool = PrivateAttr(False)
 
-    def __str__(self):
-        return f"Format <{self.name}, id: {self.id}, checked: {self._checked}>"
-
     @property
     def columns(self) -> list[ColumnSchema]:
         """Get this format's columns.
@@ -475,7 +472,14 @@ class Format(RequestModel):
         assert isinstance(output, IOBase), "`output` isn't a bytes-like object"
 
         json_query = query.model_dump(by_alias=True)
-        output.seek(0)
+        try:
+            output.seek(0)
+        except Exception as err:
+            logger.warning(
+                "Failed to seek to beginning of output buffer. Continuing anyway.",
+                exc_info=err,
+            )
+            pass
 
         start = datetime.now()
         read_bytes = 0
