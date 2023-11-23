@@ -26,11 +26,14 @@ impl DBPrepare for UserModel {
 
 #[async_trait]
 impl DBPrepare for UpdatableModel {
+    /// Conditionally prepare this updatable model for insertion.
+    /// This basically checks whether or not the password was updated.
+    /// If it was, we just simply generate a hash for it.
     async fn prepare(&mut self) -> Result<(), APIError> {
-        if self.password.is_none() {
-            return Ok(());
-        }
-        let password = self.password.clone().unwrap();
+        let password = match &self.password {
+            Some(s) => s.to_owned(),
+            _ => return Ok(()),
+        };
         // perform expensive crypto operation in threadpool
         let current_span = tracing::Span::current();
         self.password = Some(

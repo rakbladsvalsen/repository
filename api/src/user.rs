@@ -147,7 +147,9 @@ async fn update_user(
     if Config::get().protect_superuser && user_to_update.is_superuser {
         return APIError::ConflictingOperation("can't modify a superuser".into()).into();
     }
-    let user = UserMutation::update(user_to_update, user.into_inner()).await?;
+    let mut user = user.into_inner();
+    user.prepare().await?;
+    let user = UserMutation::update(user_to_update, user).await?;
     HttpResponse::Ok().json(user).to_ok()
 }
 
