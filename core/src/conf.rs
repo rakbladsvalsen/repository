@@ -24,11 +24,12 @@ impl DBConfig {
                 config.db_acquire_connection_timeout_sec,
             ));
 
-        info!("Trying to create database pool...");
+        info!("DB: Starting up database pool...");
         let conn = Database::connect(opt).await?;
         CONNECTION
             .set(conn)
             .expect("Cannot set database connection");
+        info!("DB: Successfully initialized pool: {:?}", CONNECTION);
         Ok(())
     }
 

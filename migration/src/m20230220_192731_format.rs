@@ -45,11 +45,12 @@ impl MigrationTrait for Migration {
 
 /// Learn more at https://docs.rs/sea-query#iden
 #[derive(Iden)]
-enum Format {
+pub enum Format {
     Table,
     Id,
     Name,
     Description,
     CreatedAt,
     Schema,
+    RetentionPeriodMinutes,
 }

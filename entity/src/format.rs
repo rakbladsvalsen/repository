@@ -51,6 +51,8 @@ pub struct Model {
     #[as_query(column = "Column::CreatedAt")]
     pub created_at: DateTime<Utc>,
     pub schema: FormatSchema,
+    /// The period (in minutes), to keep data for this format.
+    pub retention_period_minutes: i32,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

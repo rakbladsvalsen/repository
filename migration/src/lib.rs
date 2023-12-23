@@ -6,6 +6,7 @@ mod m20230221_184209_session;
 mod m20230221_195143_record;
 mod m20230315_035330_create_format_entitlement;
 mod m20231011_185400_user_key;
+mod m20231222_175743_format_add_retention;
 
 pub struct Migrator;
 
@@ -19,6 +20,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20230221_195143_record::Migration),
             Box::new(m20230315_035330_create_format_entitlement::Migration),
             Box::new(m20231011_185400_user_key::Migration),
+            Box::new(m20231222_175743_format_add_retention::Migration),
         ]
     }
 }

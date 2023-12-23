@@ -10,26 +10,33 @@ You'll need to set up a Postgres/Postgres-compatible database before using this 
 
 This app provides some knobs that allow you to tune and configure it via environment variables:
 
-| Variable                             | Required? |  Description                                                                                 |
-|--------------------------------------|-----------|----------------------------------------------------------------------------------------------|
-| `HOST`                               | **Yes**   | Listening address, i.e. `127.0.0.1`                                                          |
-| `PORT`                               | **Yes**   | Listening port, i.e. `8080`                                                                  |
-| `DATABASE_URL`                       | **Yes**   | Postgres database credentials, i.e. `postgres://USERNAME:PASSWORD@IP_ADDRESS:HOST/DATABASE`  |
-| `ED25519_SIGNING_KEY¹`               | **Yes**   | Ed25519 private key (used to sign JWT tokens)                                                |
-| `TOKEN_EXPIRATION_SECONDS`           | No        | JWT token expiration (in seconds). Set to `5` minutes by default.                            |
-| `DB_POOL_MIN_CONN`                   | No        | Minimum limit of connections for the database threadpool. Set to `10` by default.            |
-| `DB_POOL_MAX_CONN`                   | No        | Maximum limit of connections for the database threadpool. Set to `100` by default.           |
-| `BULK_INSERT_CHUNK_SIZE`             | No        | Create batch insert jobs with `N` entries at most. Set to `250` by default.                  |
-| `PROTECT_SUPERUSER`                  | No        | Prevent CRUD operations against superusers. Set to `true` by default.                        |
-| `MAX_PAGINATION_SIZE`                | No        | Max pagination size that can be requested by any user. Set to `1000` by default.             |
-| `DEFAULT_PAGINATION_SIZE`            | No        | Default pagination size. Set to `1000` by default.                                           |
-| `WORKERS`                            | No        | Sets number of workers to start (per bind address). Set to `16` by default.                  |
-| `RETURN_QUERY_COUNT`                 | No        | Whether to return or not item and page counts for all queries. Set to `true` by default.     |
-| `MAX_JSON_PAYLOAD_SIZE`              | No        | Max JSON payload size for any incoming request. Set to `100000` (100kB) by default.          |
-| `DB_ACQUIRE_CONNECTION_TIMEOUT_SEC`  | No        | Acquire connection timeout (in seconds). Set to `30`s by default.                            |
-| `DB_CSV_STREAM_WORKERS`              | No        | N# of database streams (and workers) to use when streaming DB data. Set to `1` by default.   |
-| `DB_CSV_TRANSFORM_WORKERS`           | No        | N# of workers to use to process the DB stream data. Set to `2` by default.                   |
-| `DB_CSV_WORKER_QUEUE_DEPTH`          | No        | Max N# of items to put in the worker queue for CSV downloads. Set to `200` by default.       |
+| Variable                             | Required? |  Description                                                                                                           |
+|--------------------------------------|-----------|------------------------------------------------------------------------------------------------------------------------|
+| `HOST`                               | **Yes**   | Listening address, i.e. `127.0.0.1`                                                                                    |
+| `PORT`                               | **Yes**   | Listening port, i.e. `8080`                                                                                            |
+| `DATABASE_URL`                       | **Yes**   | Postgres database credentials, i.e. `postgres://USERNAME:PASSWORD@IP_ADDRESS:HOST/DATABASE`                            |
+| `ED25519_SIGNING_KEY¹`               | **Yes**   | Ed25519 private key (used to sign JWT tokens)                                                                          |
+| `TOKEN_EXPIRATION_SECONDS`           | No        | JWT token expiration (in seconds). Set to `5` minutes by default.                                                      |
+| `DB_POOL_MIN_CONN`                   | No        | Minimum limit of connections for the database threadpool. Set to `10` by default.                                      |
+| `DB_POOL_MAX_CONN`                   | No        | Maximum limit of connections for the database threadpool. Set to `100` by default.                                     |
+| `BULK_INSERT_CHUNK_SIZE`             | No        | Create batch insert jobs with `N` entries at most. Set to `250` by default.                                            |
+| `PROTECT_SUPERUSER`                  | No        | Prevent CRUD operations against superusers. Set to `true` by default.                                                  |
+| `MAX_PAGINATION_SIZE`                | No        | Max pagination size that can be requested by any user. Set to `1000` by default.                                       |
+| `DEFAULT_PAGINATION_SIZE`            | No        | Default pagination size. Set to `1000` by default.                                                                     |
+| `WORKERS`                            | No        | Sets number of workers to start (per bind address). Set to `16` by default.                                            |
+| `RETURN_QUERY_COUNT`                 | No        | Whether to return or not item and page counts for all queries. Set to `true` by default.                               |
+| `MAX_JSON_PAYLOAD_SIZE`              | No        | Max JSON payload size for any incoming request. Set to `100000` (100kB) by default.                                    |
+| `DB_ACQUIRE_CONNECTION_TIMEOUT_SEC`  | No        | Acquire connection timeout (in seconds). Set to `30`s by default.                                                      |
+| `DB_CSV_STREAM_WORKERS`              | No        | N# of database streams (and workers) to use when streaming DB data. Set to `1` by default.                             |
+| `DB_CSV_TRANSFORM_WORKERS`           | No        | N# of workers to use to process the DB stream data. Set to `2` by default.                                             |
+| `DB_CSV_WORKER_QUEUE_DEPTH`          | No        | Max N# of items to put in the worker queue for CSV downloads. Set to `200` by default.                                 |
+| `MAX_API_KEYS_PER_USER`              | No        | Max N# of API Keys per user. Set to `10` by default.                                                                   |
+| `TOKEN_API_KEY_EXPIRATION_HOURS`     | No        | API Key duration, in hours. Set to `720` hours (30 days) by default.                                                   |
+| `DB_MAX_STREAMS_PER_USER`            | No        | Max N# of CSV stream connections per user. Set to `2` by default                                                       |
+| `TEMPORAL_DELETE_HOURS`              | No        | Allow non-superusers with `limitedDelete` permission to delete records from the last N# hours. Set to `24` by default. |
+| `ENABLE_PRUNE_JOB`                   | No        | Whether or not to enable the periodic prune job. This clears old upload sessions. Set to `true` by default.            |
+| `PRUNE_JOB_RUN_INTERVAL_SECONDS`     | No        | Run the prune job every N seconds. Set to `600`s (10 min) by default.                                                  |
+| `PRUNE_JOB_TIMEOUT_SECONDS`          | No        | Kill the prune job after this many seconds. Set to `600`s (10 min) by default.                                         |
 
 
 Note ¹: This key can be generated with openssl:

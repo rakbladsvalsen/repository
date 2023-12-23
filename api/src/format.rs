@@ -53,6 +53,13 @@ async fn delete_format(id: Option<Path<i32>>, user: ReqData<User>) -> APIRespons
 #[post("")]
 async fn create_format(inbound: Json<FormatModel>, user: ReqData<User>) -> APIResponse {
     verify_admin(&user)?;
+    if inbound.retention_period_minutes < 0 {
+        info!(
+            "invalid retention period: {:?}",
+            inbound.retention_period_minutes
+        );
+        return Err(APIError::BadRequest);
+    }
     let outbound = FormatMutation::create(inbound.into_inner()).await?;
     HttpResponse::Created()
         .json(outbound.try_into_model()?)

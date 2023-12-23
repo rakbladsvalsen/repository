@@ -80,6 +80,24 @@ pub struct Config {
     // to delete entries uploaded in the last N hours.
     #[envconfig(from = "TEMPORAL_DELETE_HOURS", default = "24")]
     pub temporal_delete_hours: u64,
+
+    // Whether or not to enable the prune old data job. This will
+    // spawn a background thread to delete old data on a per-format
+    // basis.
+    // Default: enabled
+    #[envconfig(from = "ENABLE_PRUNE_JOB", default = "true")]
+    pub enable_prune_job: bool,
+
+    // If ENABLE_PRUNE_JOB is enabled, then the task will be executed
+    // every PRUNE_JOB_RUN_INTERVAL_SECONDS.
+    // Default: 600 seconds (10 minutes)
+    #[envconfig(from = "PRUNE_JOB_RUN_INTERVAL_SECONDS", default = "600")]
+    pub prune_job_run_interval_seconds: u64,
+
+    // Kill the prune job timeout after PRUNE_JOB_TIMEOUT seconds.
+    // Default: 300 seconds (5 minutes).
+    #[envconfig(from = "PRUNE_JOB_TIMEOUT_SECONDS", default = "300")]
+    pub prune_job_timeout_seconds: u64,
 }
 
 impl Config {
@@ -153,6 +171,15 @@ impl Config {
         if self.temporal_delete_hours == 0 {
             return Err("TEMPORAL_DELETE_HOURS must be greater than 0".into());
         }
+        if self.enable_prune_job {
+            if self.prune_job_run_interval_seconds == 0 {
+                return Err("PRUNE_JOB_RUN_INTERVAL_SECONDS must be greater than 0".into());
+            }
+            if self.prune_job_timeout_seconds == 0 {
+                return Err("PRUNE_JOB_TIMEOUT_SECONDS must be greater than 0".into());
+            }
+        }
+
         Ok(())
     }
 }

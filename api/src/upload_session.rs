@@ -2,9 +2,10 @@ use crate::{
     core_middleware::auth::AuthMiddleware,
     error::{APIError, APIResponse, AsAPIResult},
     pagination::{PaginatedResponse, Validate},
+    util::verify_admin,
 };
 use actix_web::{
-    delete, get,
+    delete, get, post,
     web::{self, Path, Query, ReqData},
     HttpResponse,
 };
@@ -42,10 +43,18 @@ async fn delete(auth: ReqData<UserModel>, id: Option<Path<i32>>) -> APIResponse 
     HttpResponse::NoContent().finish().to_ok()
 }
 
+#[post("/prune")]
+async fn prune(auth: ReqData<UserModel>) -> APIResponse {
+    verify_admin(&auth)?;
+    let result = UploadSessionMutation::prune_old_items().await?;
+    HttpResponse::Ok().json(result).to_ok()
+}
+
 pub fn init_upload_session_routes(cfg: &mut web::ServiceConfig) {
     let scope = web::scope("/upload_session")
         .wrap(AuthMiddleware)
         .service(get_all_upload_sessions)
+        .service(prune)
         .service(delete);
     cfg.service(scope);
 }

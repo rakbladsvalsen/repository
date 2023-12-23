@@ -17,11 +17,11 @@ pub mod util;
 use std::error::Error;
 
 use actix_web::{App, HttpServer};
-use central_repository_dao::conf::DBConfig;
-// use conf::UselessConf;
 use central_repository_config::{self, inner::Config};
+use central_repository_dao::{conf::DBConfig, tasks::Tasks};
 use format::init_format_routes;
 use format_entitlement::init_format_entitlement_routes;
+use log::info;
 use migration::{Migrator, MigratorTrait};
 use mimalloc::MiMalloc;
 use record::init_record_routes;
@@ -48,8 +48,13 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
     // run pending migrations
     Migrator::up(DBConfig::get_connection(), None).await?;
-    // initialize OnceCell with database
 
+    Tasks::init_prune_task();
+
+    info!(
+        "Launching server on {}:{}",
+        config.http_address, config.http_port
+    );
     HttpServer::new(move || {
         App::new()
             .wrap(LogMiddleware)

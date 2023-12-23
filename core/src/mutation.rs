@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use ::entity::{
     api_key,
     error::DatabaseQueryError,
@@ -9,11 +11,13 @@ use ::entity::{
     upload_session::{self, OutcomeKind},
     user,
 };
+use better_debug::BetterDebug;
 use central_repository_config::inner::Config;
 use log::{debug, info};
 use regex::Regex;
 use sea_orm::*;
 use sea_query::Expr;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::conf::DBConfig;
@@ -36,6 +40,7 @@ impl FormatMutation {
             description: Set(model.description),
             created_at: Set(chrono::offset::Utc::now()),
             schema: Set(model.schema),
+            retention_period_minutes: Set(model.retention_period_minutes),
             ..Default::default()
         }
         .save(db)
@@ -53,10 +58,101 @@ impl FormatMutation {
 
         format.delete(db).await
     }
+
+    // Get all the formats with items that can be pruned.
+    #[inline]
+    pub async fn get_prunable_formats(
+        db: &DatabaseConnection,
+    ) -> Result<Vec<format::Model>, DbErr> {
+        // Note: This makes the entire thing faster because we'll only filter
+        // formats that have data. Formats without data are automatically
+        // filtered out in the final select.
+        let formats_with_data = upload_session::Entity::find()
+            .select_only()
+            .column(upload_session::Column::FormatId)
+            .distinct();
+        let subquery = formats_with_data.as_query();
+
+        // A retention period of 0 minutes means keep forever.
+        format::Entity::find()
+            .filter(format::Column::RetentionPeriodMinutes.gt(0))
+            .filter(format::Column::Id.in_subquery(subquery.to_owned()))
+            .all(db)
+            .await
+    }
+}
+
+#[derive(BetterDebug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UploadSessionPruneResult {
+    format_id: i32,
+    format_name: String,
+    pruned_created_at_before: chrono::DateTime<chrono::Utc>,
+    upload_session_ids: Vec<i32>,
+    success: usize,
+    failed: usize,
 }
 
 pub struct UploadSessionMutation;
 impl UploadSessionMutation {
+    /// Prune old upload sessions.
+    /// This function performs the following actions:
+    ///
+    ///  1. Get all the formats with data that can be pruned. This will automatically
+    ///  exclude formats without data or whose retention period is not set.
+    ///  2. Get all the upload sessions that are older than the retention period.
+    ///  3. Delete the upload sessions.
+    pub async fn prune_old_items() -> Result<Vec<UploadSessionPruneResult>, DbErr> {
+        let now = chrono::offset::Utc::now();
+        info!("pruner: running job, start date = {now:?}");
+        let db = DBConfig::get_connection();
+        let formats = FormatMutation::get_prunable_formats(db).await?;
+        info!("pruner: found {} format(s) with data", formats.len());
+        let mut prune_results = Vec::new();
+
+        for format in formats {
+            let offset = Duration::from_secs(format.retention_period_minutes as u64 * 60);
+            let created_at_before = now - offset;
+            let upload_sessions = upload_session::Entity::find()
+                .filter(upload_session::Column::CreatedAt.lt(created_at_before))
+                .filter(upload_session::Column::FormatId.eq(format.id))
+                .all(db)
+                .await?;
+            info!(
+                "pruner: format '{}' (id={}): pruning {} upload sessions, created_at={:?}",
+                format.name,
+                format.id,
+                upload_sessions.len(),
+                created_at_before
+            );
+            let upload_session_ids = upload_sessions.iter().map(|it| it.id).collect::<Vec<_>>();
+            if upload_session_ids.is_empty() {
+                info!(
+                    "pruner: no prunable entries for format '{}' (id={})",
+                    format.name, format.id
+                );
+                continue;
+            }
+            let delete_futures = upload_sessions.into_iter().map(|it| it.delete(db));
+            let result = futures::future::join_all(delete_futures).await;
+            let prune_result = UploadSessionPruneResult {
+                pruned_created_at_before: created_at_before,
+                format_id: format.id,
+                format_name: format.name,
+                upload_session_ids,
+                success: result.iter().filter(|it| it.is_ok()).count(),
+                failed: result.iter().filter(|it| it.is_err()).count(),
+            };
+            info!(
+                "pruner: format '{}' (id={}): prune result: {prune_result:#?}",
+                prune_result.format_name, prune_result.format_id
+            );
+            prune_results.push(prune_result);
+        }
+        info!("pruner: job completed");
+        Ok(prune_results)
+    }
+
     pub async fn create(model: upload_session::Model) -> Result<upload_session::Model, DbErr> {
         let db = DBConfig::get_connection();
         let mut model = model.into_active_model();
@@ -98,6 +194,7 @@ impl UploadSessionMutation {
         id: i32,
     ) -> Result<(), DatabaseQueryError> {
         let db = DBConfig::get_connection();
+        // Get the formats the user has access to.
         let user_formats = format_entitlement::Entity::find()
             .filter(format_entitlement::Column::UserId.eq(user.id));
         let user_formats_subquery = user_formats

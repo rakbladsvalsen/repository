@@ -5,6 +5,7 @@ mod mutation;
 mod pagination_impl;
 mod query;
 mod record_filtering;
+pub mod tasks;
 
 pub use entity::*;
 pub use error::*;
