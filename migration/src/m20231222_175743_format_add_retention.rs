@@ -14,7 +14,7 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(Format::Table)
-                    .add_column(
+                    .add_column_if_not_exists(
                         ColumnDef::new(Format::RetentionPeriodMinutes)
                             .unsigned()
                             .not_null()

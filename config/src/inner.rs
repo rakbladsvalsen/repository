@@ -102,9 +102,9 @@ pub struct Config {
 
 impl Config {
     pub fn init_and_check() -> Result<&'static Config, Box<dyn Error>> {
-        if CONFIG.get().is_some() {
+        if let Some(config) = CONFIG.get() {
             warn!("init_and_check() was called twice!");
-            return Ok(CONFIG.get().expect("config: Cannot get inner struct"));
+            return Ok(config);
         }
         dotenv().ok();
         info!("reading config from environment");
