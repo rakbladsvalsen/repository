@@ -88,9 +88,7 @@ pub struct UploadSessionPruneResult {
     format_id: i32,
     format_name: String,
     pruned_created_at_before: chrono::DateTime<chrono::Utc>,
-    upload_session_ids: Vec<i32>,
-    success: usize,
-    failed: usize,
+    delete_count: u64,
 }
 
 pub struct UploadSessionMutation;
@@ -113,40 +111,25 @@ impl UploadSessionMutation {
         for format in formats {
             let offset = Duration::from_secs(format.retention_period_minutes as u64 * 60);
             let created_at_before = now - offset;
-            let upload_sessions = upload_session::Entity::find()
+
+            let delete = upload_session::Entity::delete_many()
                 .filter(upload_session::Column::CreatedAt.lt(created_at_before))
                 .filter(upload_session::Column::FormatId.eq(format.id))
-                .all(db)
+                .exec(db)
                 .await?;
-            info!(
-                "pruner: format '{}' (id={}): pruning {} upload sessions, created_at={:?}",
-                format.name,
-                format.id,
-                upload_sessions.len(),
-                created_at_before
-            );
-            let upload_session_ids = upload_sessions.iter().map(|it| it.id).collect::<Vec<_>>();
-            if upload_session_ids.is_empty() {
-                info!(
-                    "pruner: no prunable entries for format '{}' (id={})",
-                    format.name, format.id
-                );
+            if delete.rows_affected == 0 {
                 continue;
             }
-            let delete_futures = upload_sessions.into_iter().map(|it| it.delete(db));
-            let result = futures::future::join_all(delete_futures).await;
+            info!(
+                "pruner: format '{}' (id={}): pruned {} upload sessions, created_at={:?}",
+                format.name, format.id, delete.rows_affected, created_at_before
+            );
             let prune_result = UploadSessionPruneResult {
                 pruned_created_at_before: created_at_before,
                 format_id: format.id,
                 format_name: format.name,
-                upload_session_ids,
-                success: result.iter().filter(|it| it.is_ok()).count(),
-                failed: result.iter().filter(|it| it.is_err()).count(),
+                delete_count: delete.rows_affected,
             };
-            info!(
-                "pruner: format '{}' (id={}): prune result: {prune_result:#?}",
-                prune_result.format_name, prune_result.format_id
-            );
             prune_results.push(prune_result);
         }
         info!("pruner: job completed");

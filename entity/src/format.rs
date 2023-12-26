@@ -33,6 +33,13 @@ impl Deref for FormatSchema {
     }
 }
 
+// Default retention period. Set to 3 months by default.
+// This value can also be set by the caller.
+fn retention_default() -> i32 {
+    // 3 months * 30 days * 24h * 60min
+    3 * 30 * 24 * 60
+}
+
 #[derive(AsQueryParam, Clone, Debug, PartialEq, Eq, DeriveEntityModel, Deserialize, Serialize)]
 #[sea_orm(table_name = "format")]
 #[serde(rename_all = "camelCase")]
@@ -52,6 +59,7 @@ pub struct Model {
     pub created_at: DateTime<Utc>,
     pub schema: FormatSchema,
     /// The period (in minutes), to keep data for this format.
+    #[serde(default = "retention_default")]
     pub retention_period_minutes: i32,
 }
 
