@@ -36,7 +36,7 @@ This app provides some knobs that allow you to tune and configure it via environ
 | `TEMPORAL_DELETE_HOURS`              | No        | Allow non-superusers with `limitedDelete` permission to delete records from the last N# hours. Set to `24` by default. |
 | `ENABLE_PRUNE_JOB`                   | No        | Whether or not to enable the periodic prune job. This clears old upload sessions. Set to `true` by default.            |
 | `PRUNE_JOB_RUN_INTERVAL_SECONDS`     | No        | Run the prune job every N seconds. Set to `600`s (10 min) by default.                                                  |
-| `PRUNE_JOB_TIMEOUT_SECONDS`          | No        | Kill the prune job after this many seconds. Set to `600`s (10 min) by default.                                         |
+| `PRUNE_JOB_TIMEOUT_SECONDS`          | No        | Kill the prune job after this many seconds. Set to `300`s (5 min) by default.                                         |
 
 
 Note ¹: This key can be generated with openssl:

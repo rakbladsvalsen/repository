@@ -26,9 +26,9 @@ impl Tasks {
             config.prune_job_run_interval_seconds, config.prune_job_timeout_seconds
         );
         loop {
-            let timeout = timeout(duration, UploadSessionMutation::prune_old_items());
             sleep.tick().await;
-            match timeout.await {
+            let prune_fn = timeout(duration, UploadSessionMutation::prune_old_items());
+            match prune_fn.await {
                 Ok(Ok(prune_result)) => info!(
                     "pruner task: successfully pruned {} formats",
                     prune_result.len()
