@@ -1,15 +1,12 @@
-use async_trait::async_trait;
 use central_repository_dao::user::{Model as UserModel, UpdatableModel};
 
 use crate::{auth::hashing::UserPassword, error::APIError};
 
-#[async_trait]
 pub trait DBPrepare {
     /// Prepare any given object for database insertion.
-    async fn prepare(&mut self) -> Result<(), APIError>;
+    fn prepare(&mut self) -> impl std::future::Future<Output = Result<(), APIError>> + Send;
 }
 
-#[async_trait]
 impl DBPrepare for UserModel {
     async fn prepare(&mut self) -> Result<(), APIError> {
         let password = self.password.clone();
@@ -24,7 +21,6 @@ impl DBPrepare for UserModel {
     }
 }
 
-#[async_trait]
 impl DBPrepare for UpdatableModel {
     /// Conditionally prepare this updatable model for insertion.
     /// This basically checks whether or not the password was updated.

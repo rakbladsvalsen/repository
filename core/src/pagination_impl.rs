@@ -1,15 +1,12 @@
 use crate::{conf::DBConfig, traits::*};
 use ::entity::user;
-use async_trait::async_trait;
 use central_repository_config::inner::Config;
 use futures::{try_join, Stream};
 use log::{debug, info};
 use sea_orm::*;
 use sea_query::{Alias, Expr, SelectStatement};
 use serde::Deserialize;
-use std::{fmt::Debug, pin::Pin};
-
-type ResultModel<T> = Result<T, DbErr>;
+use std::fmt::Debug;
 
 /// This trait provides sorted + filtered + paginated searches
 /// for any type implementing the 3 associated types.
@@ -63,7 +60,7 @@ impl PaginationOptions {
     }
 }
 
-#[async_trait]
+#[allow(async_fn_in_trait)]
 pub trait GetAllPaginated<'db>: GetAllTrait<'db> {
     /// Get total number of items in this query.
     #[inline(always)]
@@ -80,7 +77,7 @@ pub trait GetAllPaginated<'db>: GetAllTrait<'db> {
         let stmt = StatementBuilder::build(&stmt, &sea_orm::DatabaseBackend::Postgres);
 
         let result = db.query_all(stmt).await?;
-        let result = match result.get(0) {
+        let result = match result.first() {
             Some(i) => i,
             _ => return Ok(0),
         };
@@ -124,17 +121,15 @@ pub trait GetAllPaginated<'db>: GetAllTrait<'db> {
     /// This will apply the query and return an unpaged stream of items.
     /// Parameters:
     ///
-    /// `db`: The database connection.
     /// filtters: Filters to apply to the query.
     /// select_stmt: Optional statement to use for the query.
     async fn get_all_as_stream(
         filters: &Self::FilterQueryModel,
         select_stmt: Option<sea_orm::Select<Self::Entity>>,
-    ) -> Result<Pin<Box<dyn Stream<Item = ResultModel<Self::ResultModel>> + Send + 'db>>, DbErr>
-    {
+    ) -> Result<impl Stream<Item = Result<Self::ResultModel, DbErr>> + 'db + Send, DbErr> {
         let db = DBConfig::get_connection();
         let select = Self::apply_filters(filters, select_stmt);
-        Ok(select.stream(db).await.map(Box::pin)?)
+        select.stream(db).await
     }
 
     /// Get all available items using pagination.
@@ -182,5 +177,4 @@ pub trait GetAllPaginated<'db>: GetAllTrait<'db> {
     }
 }
 
-#[async_trait]
 impl<'db, T> GetAllPaginated<'db> for T where T: GetAllTrait<'db> {}
